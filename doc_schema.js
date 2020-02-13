@@ -1,6 +1,6 @@
 const dataset = "rfs_11_27_19";
 
-export function getMetaTemplate() {
+function getMetaTemplate() {
     return new DocTemplate({
         skn: null,
         name: null,
@@ -19,7 +19,7 @@ export function getMetaTemplate() {
     });
 }
 
-export function getValueTemplate() {
+function getValueTemplate() {
     return new DocTemplate({
         skn: null,
         type: "daily",
@@ -35,26 +35,42 @@ export function getValueTemplate() {
     });
 }
 
-export class DocTemplate {
-    schema;
-    typedValues;
+class DocTemplate {
 
-    constructor(schema, typedValues) {
+    constructor(schema, typedValues = {}) {
         this.schema = schema;
-        this.typedValues = typedValues == undefined ? {} : typedValues;
+        this.typedValues = typedValues;
     }
 
     setProperty(label, value) {
-        let typeLabel = typedValues[label];
+        if(this.schema[label] === undefined) {
+            return false;
+        }
+        let typeLabel = this.typedValues[label];
         if(typeLabel != undefined) {
-            schema[label][typeLabel] = value;
+            this.schema[label][typeLabel] = value;
         }
         else {
-            schema[label] = value;
+            this.schema[label] = value;
+        }
+
+        return true;
+    }
+
+    getProperty(label) {
+        let typeLabel = this.typedValues[label];
+        if(typeLabel != undefined) {
+            return this.schema[label][typeLabel];
+        }
+        else {
+            return this.schema[label];
         }
     }
 
     toJSON() {
-        return schema;
+        return this.schema;
     }
 }
+
+exports.getMetaTemplate = getMetaTemplate;
+exports.getValueTemplate = getValueTemplate;
