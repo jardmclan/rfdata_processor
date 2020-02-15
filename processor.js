@@ -1,9 +1,10 @@
 const fs = require("fs");
 const schemaTrans = require("./schema_translation");
 const schema = require("./doc_schema");
+const exec = require("child_process").exec;
 
-const dataFile = "data/daily_rf_data_2019_11_27.csv";
-const output = "output/docs.json";
+const dataFile = "./data/daily_rf_data_2019_11_27.csv";
+const output = "./output/docs.json";
 const noData = "NA";
 
 function dateParser(date) {
@@ -108,13 +109,28 @@ fs.readFile(dataFile, "utf8", (e, data) => {
         
     });
 
-
-    let docJSON = JSON.stringify(documents.meta);
-    fs.writeFile(output, docJSON, "utf8", (e) => {
-        if(e) {
-            throw e;
+    let toAdd = [documents.meta[0]];
+    toAdd.forEach((doc) => {
+        console.log(doc);
+        let wrapped = {
+            name: "test",
+            value: doc
         }
-        console.log("Complete!");
-    })
+        fs.writeFileSync(output, JSON.stringify(wrapped), "utf8");
+        exec(`./bin/add_meta.sh mnt/c/users/jard/output/docs.json`, (e, stdout, stderr) => {
+            console.log(e, stdout, stderr);
+        });
+    });
+    
+
+
+
+    // let docJSON = JSON.stringify(documents.meta);
+    // fs.writeFile(output, docJSON, "utf8", (e) => {
+    //     if(e) {
+    //         throw e;
+    //     }
+    //     console.log("Complete!");
+    // })
 
 });
