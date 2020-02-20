@@ -70,6 +70,10 @@ class DocTemplate {
     toJSON() {
         return this.schema;
     }
+
+    toString() {
+        return JSON.stringify(this.schema);
+    }
 }
 
 exports.getMetaTemplate = getMetaTemplate;

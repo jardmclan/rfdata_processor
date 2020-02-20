@@ -1,11 +1,32 @@
 const fs = require("fs");
 const schemaTrans = require("./schema_translation");
 const schema = require("./doc_schema");
-const exec = require("child_process").exec;
+const {fork} = require("child_process");
 
 const dataFile = "./data/daily_rf_data_2019_11_27.csv";
-const output = "./output/docs.json";
+//const output = "./output/docs.json";
 const noData = "NA";
+
+let cleanup = true;
+//just use sequential ids, also serves as a counter for the number of docs for exiting
+docID = 0;
+complete = false;
+returned = 0;
+
+function sendData(metadata) {
+    wrappedMeta = {
+        name: "test",
+        value: metadata
+    };
+    let fname = `output/metadoc_${docID++}.json`;
+    let message = {
+        id: docID,
+        data: JSON.stringify(wrappedMeta),
+        fname: fname,
+        cleanup: cleanup
+    };
+    ingestionCoordinator.send(message);
+}
 
 function dateParser(date) {
     let sd = date.slice(1);
@@ -13,6 +34,24 @@ function dateParser(date) {
     let isoDate = formattedDate.toISOString();
     return isoDate;
 }
+
+
+let ingestionCoordinator = fork("ingestion_coord.js");
+
+ingestionCoordinator.on("message", (message) => {
+    if(!message.result.success) {
+        console.log(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
+    }
+    else if(message.result.pof != null) {
+        console.log(`Warning: An error occured after metadata insertion.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
+    }
+    //if all docs sent for processing and number returned matches number sent kill ingestor process and exit
+    if(++returned >= docID && complete) {
+        ingestionCoordinator.kill();
+        console.log("Complete!");
+        process.exit(0);
+    }
+});
 
 fs.readFile(dataFile, "utf8", (e, data) => {
     if(e) {
@@ -35,12 +74,12 @@ fs.readFile(dataFile, "utf8", (e, data) => {
 
     dateRegex = new RegExp(schemaTrans.date);
 
-    let documents = {
-        meta: [],
-        value: []
-    }; 
+    // let documents = {
+    //     meta: [],
+    //     value: []
+    // }; 
 
-    dataRows.forEach((row, j) => {
+    dataRows.forEach((row) => {
 
         let metadata = {};
         let values = {};
@@ -58,9 +97,7 @@ fs.readFile(dataFile, "utf8", (e, data) => {
                     //probably want the value to be stored numerically
                     let valuef = parseFloat(value);
                     if(Number.isNaN(valuef)) {
-                        console.log(value, j, i);
                         console.log(`Warning: Value not 'no data' or parseable as float. Skipping...`);
-                        throw new Error("exit");
                     }
                     else {
                         values[date] = valuef;
@@ -86,7 +123,9 @@ fs.readFile(dataFile, "utf8", (e, data) => {
             console.log(`Warning: SKN not set. Skipping row...`);
         }
         else {
-            documents.meta.push(metaDoc.toJSON());
+            //!here
+            //sendData(metaDoc.toJSON());
+            // documents.meta.push(metaDoc.toJSON());
 
             //value docs
             valueFields = {
@@ -103,24 +142,32 @@ fs.readFile(dataFile, "utf8", (e, data) => {
                         console.log(`Warning: Could not set property ${label}, not found in template.`);
                     }
                 });
-                documents.value.push(valueDoc.toJSON());
+                //!here
+                //send to ingestor
+                sendData(valueDoc.toJSON());
+                //documents.value.push(valueDoc.toJSON());
             });
         }
         
     });
 
-    let toAdd = [documents.meta[0]];
-    toAdd.forEach((doc) => {
-        console.log(doc);
-        let wrapped = {
-            name: "test",
-            value: doc
-        }
-        fs.writeFileSync(output, JSON.stringify(wrapped), "utf8");
-        exec(`./bin/add_meta.sh mnt/c/users/jard/output/docs.json`, (e, stdout, stderr) => {
-            console.log(e, stdout, stderr);
-        });
-    });
+    complete = true;
+
+
+    
+
+    // let toAdd = [documents.meta[1]];
+    // toAdd.forEach((doc) => {
+    //     let wrapped = {
+    //         name: "test",
+    //         value: doc
+    //     }
+    //     fs.writeFileSync(output, JSON.stringify(wrapped), "utf8");
+        
+    // });
+
+
+    
     
 
 
