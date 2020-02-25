@@ -2,5 +2,5 @@
 
 for arg in "$@"
 do
-    metadata-list -Q "{'\$and':[{'owner': 'mcleanj'},{'name': '$arg'}]}" | xargs -I % metadata-delete -V %
+    metadata-list -l 0 -Q "{'\$and':[{'owner': 'mcleanj'},{'name': '$arg'}]}" | xargs -I % metadata-delete %
 done

@@ -142,6 +142,7 @@ if(valueLimit < 0) {
     valueLimit = Number.POSITIVE_INFINITY;
 }
 
+
 //-------------end parse args--------------------
 
 
@@ -296,29 +297,28 @@ fs.readFile(dataFile, "utf8", (e, data) => {
                 metaSent++;
             }
 
-            //check if value limit reached
-            if(valueSent < valueLimit) {
-                //value docs
-                valueFields = {
-                    skn: skn,
-                    date: null,
-                    value: null
-                }
-                Object.keys(values).forEach((date) => {
-                    valueFields.date = date;
-                    valueFields.value = values[date];
-                    let valueDoc = schema.getValueTemplate();
-                    Object.keys(valueFields).forEach((label) => {
-                        if(!valueDoc.setProperty(label, valueFields[label])) {
-                            console.log(`Warning: Could not set property ${label}, not found in template.`);
-                        }
-                    });
-
-                    //send value to ingestor
-                    sendData(valueDoc.toJSON(), "value");
-                    valueSent++;
-                    
+            
+            //value docs
+            valueFields = {
+                skn: skn,
+                date: null,
+                value: null
+            }
+            let dates = Object.keys(values);
+            //iterate over values and check if value limit reached
+            for(let i = 0; i < dates.length, valueSent < valueLimit; i++, valueSent++) {
+                date = dates[i];
+                valueFields.date = date;
+                valueFields.value = values[date];
+                let valueDoc = schema.getValueTemplate();
+                Object.keys(valueFields).forEach((label) => {
+                    if(!valueDoc.setProperty(label, valueFields[label])) {
+                        console.log(`Warning: Could not set property ${label}, not found in template.`);
+                    }
                 });
+
+                //send value to ingestor
+                sendData(valueDoc.toJSON(), "value");
             }
         }
         
