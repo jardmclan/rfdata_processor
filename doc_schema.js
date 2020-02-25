@@ -25,6 +25,7 @@ function getValueTemplate() {
         type: "daily",
         //parse values as numbers, check if values are properly processed as numeric types during ingestion
         value: null,
+        //did this even work?
         date: {
             $date: null
         },

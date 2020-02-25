@@ -1,31 +1,185 @@
 const fs = require("fs");
+const path = require("path");
 const schemaTrans = require("./schema_translation");
 const schema = require("./doc_schema");
 const {fork} = require("child_process");
 
-const dataFile = "./data/daily_rf_data_2019_11_27.csv";
-//const output = "./output/docs.json";
-const noData = "NA";
+let dataFile = null;
+let outDir = null;
+
+let noData = "NA";
 
 let cleanup = true;
-//just use sequential ids, also serves as a counter for the number of docs for exiting
-docID = 0;
-complete = false;
-returned = 0;
 
-function sendData(metadata) {
+let metaLimit = -1;
+let valueLimit = -1;
+let maxSpawn = 50;
+
+let docNames = {
+    meta: "meta_test",
+    value: "value_test"
+};
+
+//-------------parse args--------------------
+
+let helpString = "Available arguments:\n"
++ "-f || --input-file: Required. CSV to convert to documents.\n"
++ "-o || --output_directory: Required. Directory to write JSON documents and other output.\n"
++ "-mn || --meta_document_name: Optional. Name for site metadata documents. Default value 'meta_test'.\n"
++ "-vn || --value_document_name: Optional. Name for site value documents. Default value 'value_test'.\n"
++ "-nd || --nodata_value: Optional. No data value in input document. Default value 'NA'.\n"
++ "-nc || --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
++ "-ml || --metadata_document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-vl || --value_document_limit: Optional. Limit the number of value documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-s || --max_spawn: Optional. The maximum number of ingestor processes to spawn at once. Note that the total number of processes will be n+2 (main process and coordinator process). Default value 50.\n"
++ "-h || --help: Show this message.\n";
+
+function invalidArgs() {
+    console.error(helpString);
+    process.exit(1);
+}
+
+function helpAndTerminate() {
+    console.log(helpString);
+    process.exit(0);
+}
+
+let args = process.argv.slice(2);
+for(let i = 0; i < args.length; i++) {
+    switch(args[i]) {
+        case "-f":
+        case "--input_file": {
+            //get next arg, ensure not out of range
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            dataFile = args[i];
+            break;
+        }
+        case "-o":
+        case "-output_directory": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            outDir = args[i];
+            break;
+        }
+        case "-mn":
+        case "--meta_document_name": {
+            //get next arg, ensure not out of range
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            docNames.meta = args[i];
+            break;
+        }
+        case "-vn":
+        case "--value_document_name": {
+            //get next arg, ensure not out of range
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            docNames.value = args[i];
+            break;
+        }
+        case "-nd":
+        case "--nodata_value": {
+            //get next arg, ensure not out of range
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            noData = args[i];
+            break;
+        }
+        case "-nc":
+        case "--no_cleanup": {
+            cleanup = false;
+            break;
+        }
+        case "-ml":
+        case "--matadata_document_limit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            metaLimit = parseInt(args[i]);
+            if(isNaN(metaLimit)) {
+                invalidArgs();
+            }
+            break;
+        }
+        case "-vl":
+        case "--value_document_limit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            valueLimit = parseInt(args[i]);
+            if(isNaN(valueLimit)) {
+                invalidArgs();
+            }
+            break;
+        }
+        case "-h":
+        case "--help": {
+            helpAndTerminate();
+            break;
+        }
+        default: {
+            invalidArgs();
+        }
+    }
+}
+
+//need to specify data file and output directory
+if(dataFile == null || outDir == null) {
+    invalidArgs();
+}
+
+//convert negative limits to infinity for easier comparisons
+if(metaLimit < 0) {
+    metaLimit = Number.POSITIVE_INFINITY;
+}
+if(valueLimit < 0) {
+    valueLimit = Number.POSITIVE_INFINITY;
+}
+
+//-------------end parse args--------------------
+
+
+//just use sequential ids, also serves as a counter for the number of docs for exiting
+let docID = 0;
+let returned = 0;
+let allSent = false;
+
+let metaSent = 0;
+let valueSent = 0;
+
+function sendData(metadata, type) {
+    let name = docNames[type];
+    if(name == undefined) {
+        console.error(`Error: Document type ${type} is not defined. Could not add metadata document.`);
+    }
     wrappedMeta = {
-        name: "test",
+        name: name,
         value: metadata
     };
-    let fname = `output/metadoc_${docID++}.json`;
+    let id = docID++;
+    let fname = path.join(outDir, `metadoc_${id}.json`);
     let message = {
-        id: docID,
+        id: id,
         data: JSON.stringify(wrappedMeta),
         fname: fname,
         cleanup: cleanup
     };
-    ingestionCoordinator.send(message);
+    ingestionCoordinator.send(message, (e) => {
+        if(e) {
+            console.error(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
+        }
+    });
+}
+
+function complete() {
+    ingestionCoordinator.send(null);
+    allSent = true;
 }
 
 function dateParser(date) {
@@ -36,18 +190,30 @@ function dateParser(date) {
 }
 
 
-let ingestionCoordinator = fork("ingestion_coord.js");
+let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString()], {stdio: "pipe"});
+
+//push errors from coordination thread to stderr
+ingestionCoordinator.stderr.on("data", (chunk) => {
+    console.error(`Error in coordinator process: ${chunk.toString()}`);
+});
+
+//if coordination thread exits with an error code exit process imediately
+ingestionCoordinator.on("exit", (code) => {
+    if(code > 0) {
+        console.error(`Error: Coordinator process has exited with a non-zero exit code. Error code ${code}.`);
+    }
+    process.exit(1);
+});
 
 ingestionCoordinator.on("message", (message) => {
     if(!message.result.success) {
-        console.log(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
+        console.error(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
     }
     else if(message.result.pof != null) {
         console.log(`Warning: An error occured after metadata insertion.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
     }
-    //if all docs sent for processing and number returned matches number sent kill ingestor process and exit
-    if(++returned >= docID && complete) {
-        ingestionCoordinator.kill();
+
+    if(++returned >= docID && allSent) {
         console.log("Complete!");
         process.exit(0);
     }
@@ -74,18 +240,19 @@ fs.readFile(dataFile, "utf8", (e, data) => {
 
     dateRegex = new RegExp(schemaTrans.date);
 
-    // let documents = {
-    //     meta: [],
-    //     value: []
-    // }; 
+    for(let i = 0; i < dataRows.length; i++) {
+        //if both limits reached just break, no need to process the rest of the rows
+        if(metaSent >= metaLimit && valueSent >= valueLimit) {
+            break;
+        }
 
-    dataRows.forEach((row) => {
+        let row = dataRows[i];
 
         let metadata = {};
         let values = {};
 
-        headers.forEach((label, i) => {
-            let value = row[i];
+        headers.forEach((label, j) => {
+            let value = row[j];
             let docLabel = schemaTrans.meta[label];
             if(docLabel != undefined) {
                 metadata[docLabel] = value;
@@ -123,61 +290,40 @@ fs.readFile(dataFile, "utf8", (e, data) => {
             console.log(`Warning: SKN not set. Skipping row...`);
         }
         else {
-            //!here
-            //sendData(metaDoc.toJSON());
-            // documents.meta.push(metaDoc.toJSON());
-
-            //value docs
-            valueFields = {
-                skn: skn,
-                date: null,
-                value: null
+            //send site metadata to ingestor if limit not reached
+            if(metaSent < metaLimit) {
+                sendData(metaDoc.toJSON(), "meta");
+                metaSent++;
             }
-            Object.keys(values).forEach((date) => {
-                valueFields.date = date;
-                valueFields.value = values[date];
-                let valueDoc = schema.getValueTemplate();
-                Object.keys(valueFields).forEach((label) => {
-                    if(!valueDoc.setProperty(label, valueFields[label])) {
-                        console.log(`Warning: Could not set property ${label}, not found in template.`);
-                    }
+
+            //check if value limit reached
+            if(valueSent < valueLimit) {
+                //value docs
+                valueFields = {
+                    skn: skn,
+                    date: null,
+                    value: null
+                }
+                Object.keys(values).forEach((date) => {
+                    valueFields.date = date;
+                    valueFields.value = values[date];
+                    let valueDoc = schema.getValueTemplate();
+                    Object.keys(valueFields).forEach((label) => {
+                        if(!valueDoc.setProperty(label, valueFields[label])) {
+                            console.log(`Warning: Could not set property ${label}, not found in template.`);
+                        }
+                    });
+
+                    //send value to ingestor
+                    sendData(valueDoc.toJSON(), "value");
+                    valueSent++;
+                    
                 });
-                //!here
-                //send to ingestor
-                sendData(valueDoc.toJSON());
-                //documents.value.push(valueDoc.toJSON());
-            });
+            }
         }
         
-    });
+    }
 
-    complete = true;
-
-
-    
-
-    // let toAdd = [documents.meta[1]];
-    // toAdd.forEach((doc) => {
-    //     let wrapped = {
-    //         name: "test",
-    //         value: doc
-    //     }
-    //     fs.writeFileSync(output, JSON.stringify(wrapped), "utf8");
-        
-    // });
-
-
-    
-    
-
-
-
-    // let docJSON = JSON.stringify(documents.meta);
-    // fs.writeFile(output, docJSON, "utf8", (e) => {
-    //     if(e) {
-    //         throw e;
-    //     }
-    //     console.log("Complete!");
-    // })
+    complete();
 
 });

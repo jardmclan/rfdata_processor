@@ -30,6 +30,10 @@ function cleanupFile(fname) {
 function addMeta(metaFile) {
     return new Promise((resolve, reject) => {
         child = spawn("bash", ["./bin/add_meta.sh", metaFile]);
+        //could not spawn bash process
+        child.on("error", (e) => {
+            reject(e);
+        });
         child.stderr.on('data', (e) => {
             reject(e);
         });
