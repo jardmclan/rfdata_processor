@@ -28,7 +28,7 @@ fs.readFile(dataFile, "utf8", (e, data) => {
     let rowDef = new RegExp(`^(?:${field.source},)*${field.source}$`);
 
     //starred groups only capture last instance, ugh
-    let testDef = new RegExp("^(?:(.*?),)*(.*?)$");
+    let testDef = new RegExp("(.*?)(?:,|$)", "g");
 
     console.log(rowDef.source);
     
@@ -39,7 +39,9 @@ fs.readFile(dataFile, "utf8", (e, data) => {
         // }
 
         let match = row.match(testDef);
-        console.log(match[1]);
+        console.log(match.length);
+        //test length, first row should be fine
+        console.log(row.split(",").length);
 
         break;        
     }
