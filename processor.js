@@ -1,7 +1,7 @@
-const fs = require("fs");
 const path = require("path");
 const schemaTrans = require("./schema_translation");
 const schema = require("./doc_schema");
+const csvParser = require("./csv_parser");
 const {fork} = require("child_process");
 
 let dataFile = null;
@@ -13,6 +13,7 @@ let cleanup = true;
 
 let metaLimit = -1;
 let valueLimit = -1;
+let valueLimitI = -1;
 let maxSpawn = 50;
 
 let docNames = {
@@ -31,6 +32,7 @@ let helpString = "Available arguments:\n"
 + "-nc || --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
 + "-ml || --metadata_document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
 + "-vl || --value_document_limit: Optional. Limit the number of value documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-vli || --value_document_limit_individual: Optional. Limit the number of value documents to be ingested per rainfall station. Negative value indicates no limit. Default value -1.\n"
 + "-s || --max_spawn: Optional. The maximum number of ingestor processes to spawn at once. Note that the total number of processes will be n+2 (main process and coordinator process). Default value 50.\n"
 + "-h || --help: Show this message.\n";
 
@@ -118,6 +120,17 @@ for(let i = 0; i < args.length; i++) {
             }
             break;
         }
+        case "-vli":
+        case "--value_document_limit_individual": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            valueLimitI = parseInt(args[i]);
+            if(isNaN(valueLimitI)) {
+                invalidArgs();
+            }
+            break;
+        }
         case "-h":
         case "--help": {
             helpAndTerminate();
@@ -140,6 +153,9 @@ if(metaLimit < 0) {
 }
 if(valueLimit < 0) {
     valueLimit = Number.POSITIVE_INFINITY;
+}
+if(valueLimitI < 0) {
+    valueLimitI = Number.POSITIVE_INFINITY;
 }
 
 
@@ -183,6 +199,8 @@ function complete() {
     allSent = true;
 }
 
+
+
 function dateParser(date) {
     let sd = date.slice(1);
     let formattedDate = new Date(sd);
@@ -192,6 +210,14 @@ function dateParser(date) {
 
 
 let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString()], {stdio: "pipe"});
+
+function errorExit(e) {
+    console.error(`An error has occurred, the process will exit.\n${e.toString()}`);
+    if(ingestionCoordinator) {
+        ingestionCoordinator.kill("SIGABRT");
+    }
+    process.exit(1);
+}
 
 //push errors from coordination thread to stderr
 ingestionCoordinator.stderr.on("data", (chunk) => {
@@ -220,23 +246,15 @@ ingestionCoordinator.on("message", (message) => {
     }
 });
 
-fs.readFile(dataFile, "utf8", (e, data) => {
-    if(e) {
-        throw e;
-    }
-
-    let rows = data.trim().split("\n");
-
-    let headers = rows.shift().split(",").map((header) => {
-        return header.replace(/^\s*('|")?|(\s|'|")?\s*$/g, "");
+csvParser.parseCSV(dataFile, true).then((data) => {
+    //run through trim map to remove any extraneous whitespace that may have been left in the file
+    let headers = data.headers.map((header) => {
+        return header.trim();
     });
-
-    let dataRows = [];
-    rows.forEach((row) => {
-        let rowData = row.split(",").map((datum) => {
-            return datum.replace(/^\s*('|")?|('|")?\s*$/g, "");
+    let dataRows = data.values.map((row) => {
+        return row.map((value) => {
+            return value.trim();
         });
-        dataRows.push(rowData);
     });
 
     dateRegex = new RegExp(schemaTrans.date);
@@ -305,8 +323,8 @@ fs.readFile(dataFile, "utf8", (e, data) => {
                 value: null
             }
             let dates = Object.keys(values);
-            //iterate over values and check if value limit reached
-            for(let i = 0; i < dates.length, valueSent < valueLimit; i++, valueSent++) {
+            //iterate over values and check if value limit reached for both individual station and total
+            for(let i = 0; i < dates.length, i < valueLimitI, valueSent < valueLimit; i++, valueSent++) {
                 date = dates[i];
                 valueFields.date = date;
                 valueFields.value = values[date];
@@ -325,5 +343,6 @@ fs.readFile(dataFile, "utf8", (e, data) => {
     }
 
     complete();
-
+}, (e) => {
+    errorExit(e);
 });

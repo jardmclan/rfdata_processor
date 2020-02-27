@@ -64,28 +64,42 @@ process.on("message", (message) => {
         addMeta(fname).then(() => {
             if(cleanup) {
                 cleanupFile(fname).then(() => {
-                    process.send(result);
-                    process.exit(0);
+                    process.send(result, callback = () => {
+                        process.exit(0);
+                    });
                 }), (e) => {
                     //no need to set success to false, data ingestion worked, just couldn't clean file
                     result.pof = "clean";
                     result.error = e.toString();
-                    process.send(result);
-                    process.exit(1);
+                    process.send(result, callback = () => {
+                        process.exit(1);
+                    });
                 };
             }
+            else {
+                process.send(result, callback = () => {
+                    process.exit(0);
+                });
+            }
         }, (e) => {
-            success = "false"
+            result.success = false
             result.pof = "add_meta";
             result.error = e.toString();
-            process.send(result);
-            process.exit(1);
+            process.send(result, callback = () => {
+                //file was written, so try to cleanup, ignore any errors
+                if(cleanup) {
+                    cleanupFile(fname).finally(() => {
+                        process.exit(1);
+                    });
+                }
+            });
         });
     }, (e) => {
-        success = "false"
+        result.success = false
         result.pof = "write";
         result.error = e.toString();
-        process.send(result);
-        process.exit(1);
+        process.send(result, callback = () => {
+            process.exit(1);
+        });
     });
 });

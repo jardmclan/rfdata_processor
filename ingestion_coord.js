@@ -87,7 +87,8 @@ spawnMonitor.on("processCompleted", () => {
         waiting++;
     }
     //if last message returned and message queueing complete, end process
-    else if(complete) {
+    else if(waiting == 0 && complete) {
+        console.error("called");
         process.exit(0);
     }
 });
