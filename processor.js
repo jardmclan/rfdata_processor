@@ -220,7 +220,7 @@ function dateParser(date) {
     //remove x at beginning
     let sd = date.slice(1);
     //let's manually convert to iso string so we don't have to worry about js date potentially adding a timezone offset
-    let isoDate = sd.replace(/\./g, "-") + ":00:00:00.000Z";
+    let isoDate = sd.replace(/\./g, "-") + "T00:00:00.000Z";
     return isoDate;
 }
 
