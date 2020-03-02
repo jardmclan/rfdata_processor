@@ -14,6 +14,7 @@ let cleanup = true;
 let metaLimit = -1;
 let valueLimit = -1;
 let valueLimitI = -1;
+let faultLimit = -1;
 let maxSpawn = 50;
 
 let docNames = {
@@ -131,6 +132,17 @@ for(let i = 0; i < args.length; i++) {
             }
             break;
         }
+        case "-fl":
+        case "--fault_limit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            faultLimit = parseInt(args[i]);
+            if(isNaN(faultLimit)) {
+                invalidArgs();
+            }
+            break;
+        }
         case "-h":
         case "--help": {
             helpAndTerminate();
@@ -156,6 +168,9 @@ if(valueLimit < 0) {
 }
 if(valueLimitI < 0) {
     valueLimitI = Number.POSITIVE_INFINITY;
+}
+if(faultLimit < 0) {
+    faultLimit = Number.POSITIVE_INFINITY;
 }
 
 
@@ -233,8 +248,12 @@ ingestionCoordinator.on("exit", (code) => {
     process.exit(1);
 });
 
+let faults = 0;
 ingestionCoordinator.on("message", (message) => {
     if(!message.result.success) {
+        if(++faults > faultLimit) {
+            errorExit(new Error("Fault limit reached. Too many metadata ingestor processes exited with an error."));
+        }
         console.error(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
     }
     else if(message.result.pof != null) {
