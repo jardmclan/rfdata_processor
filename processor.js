@@ -212,7 +212,8 @@ function sendData(metadata, type) {
         id: id,
         data: JSON.stringify(wrappedMeta),
         fname: fname,
-        cleanup: cleanup
+        cleanup: cleanup,
+        container: containerLoc
     };
     ingestionCoordinator.send(message, (e) => {
         if(e) {
@@ -237,7 +238,7 @@ function dateParser(date) {
 }
 
 
-let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString(), containerLoc], {stdio: "pipe"});
+let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString()], {stdio: "pipe"});
 
 function errorExit(e) {
     console.error(`An error has occurred, the process will exit.\n${e.toString()}`);

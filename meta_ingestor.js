@@ -27,9 +27,9 @@ function cleanupFile(fname) {
     });
 }
 
-function addMeta(metaFile) {
+function addMeta(metaFile, container) {
     return new Promise((resolve, reject) => {
-        child = spawn("bash", ["./bin/add_meta.sh", metaFile]);
+        child = container == null ? spawn("bash", ["./bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["./bin/agave_containerized/add_meta.sh", container, metaFile]);
         //could not spawn bash process
         child.on("error", (e) => {
             reject(e);
@@ -53,6 +53,7 @@ process.on("message", (message) => {
     let fname = message.fname;
     let cleanup = message.cleanup;
     let data = message.data;
+    let container = message.container;
 
     let result = {
         success: true,
@@ -61,7 +62,7 @@ process.on("message", (message) => {
     }
 
     writeMeta(fname, data).then(() => {
-        addMeta(fname).then(() => {
+        addMeta(fname, container).then(() => {
             if(cleanup) {
                 cleanupFile(fname).then(() => {
                     process.send(result, callback = () => {
