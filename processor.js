@@ -10,6 +10,7 @@ let outDir = null;
 let noData = "NA";
 
 let cleanup = true;
+let containerLoc = null;
 
 let metaLimit = -1;
 let valueLimit = -1;
@@ -25,17 +26,19 @@ let docNames = {
 //-------------parse args--------------------
 
 let helpString = "Available arguments:\n"
-+ "-f || --input-file: Required. CSV to convert to documents.\n"
-+ "-o || --output_directory: Required. Directory to write JSON documents and other output.\n"
-+ "-mn || --meta_document_name: Optional. Name for site metadata documents. Default value 'meta_test'.\n"
-+ "-vn || --value_document_name: Optional. Name for site value documents. Default value 'value_test'.\n"
-+ "-nd || --nodata_value: Optional. No data value in input document. Default value 'NA'.\n"
-+ "-nc || --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
-+ "-ml || --metadata_document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
-+ "-vl || --value_document_limit: Optional. Limit the number of value documents to be ingested. Negative value indicates no limit. Default value -1.\n"
-+ "-vli || --value_document_limit_individual: Optional. Limit the number of value documents to be ingested per rainfall station. Negative value indicates no limit. Default value -1.\n"
-+ "-s || --max_spawn: Optional. The maximum number of ingestor processes to spawn at once. Note that the total number of processes will be n+2 (main process and coordinator process). Default value 50.\n"
-+ "-h || --help: Show this message.\n";
++ "-f, --input-file: Required. CSV to convert to documents.\n"
++ "-o, --output_directory: Required. Directory to write JSON documents and other output.\n"
++ "-mn, --meta_document_name: Optional. Name for site metadata documents. Default value 'meta_test'.\n"
++ "-vn, --value_document_name: Optional. Name for site value documents. Default value 'value_test'.\n"
++ "-nd, --nodata_value: Optional. No data value in input document. Default value 'NA'.\n"
++ "-nc, --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
++ "-ml, --metadata_document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-vl, --value_document_limit: Optional. Limit the number of value documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-vli, --value_document_limit_individual: Optional. Limit the number of value documents to be ingested per rainfall station. Negative value indicates no limit. Default value -1.\n"
++ "-fl, --fault_limit: Optional. Limit the number of metadata ingestion faults before failing. Negative value indicates no limit. Default value -1.\n"
++ "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image.\n"
++ "-s, --max_spawn: Optional. The maximum number of ingestor processes to spawn at once. Note that the total number of processes will be n+2 (main process and coordinator process). Default value 50.\n"
++ "-h, --help: Show this message.\n";
 
 function invalidArgs() {
     console.error(helpString);
@@ -143,6 +146,15 @@ for(let i = 0; i < args.length; i++) {
             }
             break;
         }
+        case "-c":
+        case "--containerized": {
+            //get next arg, ensure not out of range
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            containerLoc = args[i];
+            break;
+        }
         case "-h":
         case "--help": {
             helpAndTerminate();
@@ -225,7 +237,7 @@ function dateParser(date) {
 }
 
 
-let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString()], {stdio: "pipe"});
+let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString(), containerLoc], {stdio: "pipe"});
 
 function errorExit(e) {
     console.error(`An error has occurred, the process will exit.\n${e.toString()}`);

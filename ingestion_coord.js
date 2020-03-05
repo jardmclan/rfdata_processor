@@ -1,6 +1,7 @@
 const {fork} = require("child_process");
 const {EventEmitter} = require("events");
 
+let container = null;
 
 //get max processes to spawn from args or exit if not defined
 if(process.argv.length < 3) {
@@ -12,6 +13,11 @@ let maxSpawn = parseInt(process.argv[2]);
 if(isNaN(maxSpawn)) {
     process.stderr.write("Invalid args. Requires numeric max spawn value.");
     process.exit(2)
+}
+
+//check if a container is defined
+if(process.argv.length > 3) {
+    container = process.argv[3];
 }
 
 const spawnMonitor = new EventEmitter();
@@ -29,7 +35,7 @@ function spawnIngestor(message) {
         };
 
         //spin off a new process to do the message processing
-        let ingestor = fork("meta_ingestor.js");
+        let ingestor = container == null ? fork("meta_ingestor.js") : fork("meta_ingestor.js", [container]);
 
         //pass message through to new process
         ingestor.send(message);
