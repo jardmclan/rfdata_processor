@@ -155,6 +155,17 @@ for(let i = 0; i < args.length; i++) {
             containerLoc = args[i];
             break;
         }
+        case "-s":
+        case "--max_spawn": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            maxSpawn = parseInt(args[i]);
+            if(isNaN(maxSpawn)) {
+                invalidArgs();
+            }
+            break;
+        }
         case "-h":
         case "--help": {
             helpAndTerminate();
