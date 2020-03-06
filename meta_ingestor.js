@@ -93,6 +93,9 @@ process.on("message", (message) => {
                         process.exit(1);
                     });
                 }
+                else {
+                    process.exit(1);
+                }
             });
         });
     }, (e) => {
