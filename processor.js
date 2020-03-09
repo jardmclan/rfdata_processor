@@ -209,30 +209,36 @@ let metaSent = 0;
 let valueSent = 0;
 
 function sendData(metadata, type) {
-    let name = docNames[type];
-    if(name == undefined) {
-        console.error(`Error: Document type ${type} is not defined. Could not add metadata document.`);
-    }
-    wrappedMeta = {
-        name: name,
-        value: metadata
-    };
-    let id = docID++;
-    let fname = path.join(outDir, `metadoc_${id}.json`);
-    let message = {
-        id: id,
-        data: JSON.stringify(wrappedMeta),
-        fname: fname,
-        cleanup: cleanup,
-        container: containerLoc
-    };
-    ingestionCoordinator.send(message, (e) => {
-        if(e) {
-            console.error(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
+    return new Promise((resolve, reject) => {
+        let name = docNames[type];
+        if(name == undefined) {
+            console.error(`Error: Document type ${type} is not defined. Could not add metadata document.`);
         }
+        wrappedMeta = {
+            name: name,
+            value: metadata
+        };
+        let id = docID++;
+        let fname = path.join(outDir, `metadoc_${id}.json`);
+        let message = {
+            id: id,
+            data: JSON.stringify(wrappedMeta),
+            fname: fname,
+            cleanup: cleanup,
+            container: containerLoc
+        };
+        ingestionCoordinator.send(message, (e) => {
+            if(e) {
+                reject(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
+            }
+            else {
+                resolve();
+            }
+        });
     });
 }
 
+//messages might be sent out of order, add promise to ensure all sent
 function complete() {
     ingestionCoordinator.send(null);
     allSent = true;
@@ -289,6 +295,8 @@ ingestionCoordinator.on("message", (message) => {
         process.exit(0);
     }
 });
+
+let sendChain = Promise.resolve();
 
 csvParser.parseCSV(dataFile, true).then((data) => {
     //run through trim map to remove any extraneous whitespace that may have been left in the file
@@ -355,7 +363,12 @@ csvParser.parseCSV(dataFile, true).then((data) => {
         else {
             //send site metadata to ingestor if limit not reached
             if(metaSent < metaLimit) {
-                sendData(metaDoc.toJSON(), "meta");
+                sendChain = sendChain.then(null, (e) => {
+                    console.error(e);
+                })
+                .finally(() => {
+                    return sendData(metaDoc.toJSON(), "meta");
+                });
                 metaSent++;
             }
 
@@ -380,13 +393,23 @@ csvParser.parseCSV(dataFile, true).then((data) => {
                 });
 
                 //send value to ingestor
-                sendData(valueDoc.toJSON(), "value");
+                sendChain = sendChain.then(null, (e) => {
+                    console.error(e);
+                })
+                .finally(() => {
+                    return sendData(valueDoc.toJSON(), "value");
+                });
             }
         }
         
     }
 
-    complete();
+    sendChain.then(null, (e) => {
+        console.error(e);
+    })
+    .finally(() => {
+        complete();
+    });
 }, (e) => {
     errorExit(e);
 });
