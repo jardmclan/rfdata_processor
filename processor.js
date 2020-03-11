@@ -326,7 +326,7 @@ function processRow(headers, row) {
     let sendPromises = [];
     //if both limits reached just resolve promise with true to signal stop
     if(metaSent >= metaLimit && valueSent >= valueLimit) {
-        return new Promise.resolve(true);
+        return Promise.resolve(true);
     }
 
     let metadata = {};
