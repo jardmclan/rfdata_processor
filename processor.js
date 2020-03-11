@@ -255,6 +255,8 @@ function dateParser(date) {
 }
 
 
+//-----------------------coordinator defs--------------------------------------------------
+
 let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString()], {stdio: "pipe"});
 
 function errorExit(e) {
@@ -296,7 +298,8 @@ ingestionCoordinator.on("message", (message) => {
     }
 });
 
-let sendChain = Promise.resolve();
+//-----------------------end coordinator defs---------------------------------------------
+
 
 csvParser.parseCSV(dataFile, true).then((data) => {
     //run through trim map to remove any extraneous whitespace that may have been left in the file
@@ -311,105 +314,128 @@ csvParser.parseCSV(dataFile, true).then((data) => {
 
     dateRegex = new RegExp(schemaTrans.date);
 
-    for(let i = 0; i < dataRows.length; i++) {
-        //if both limits reached just break, no need to process the rest of the rows
-        if(metaSent >= metaLimit && valueSent >= valueLimit) {
-            break;
-        }
-
-        let row = dataRows[i];
-
-        let metadata = {};
-        let values = {};
-
-        headers.forEach((label, j) => {
-            let value = row[j];
-            let docLabel = schemaTrans.meta[label];
-            if(docLabel != undefined) {
-                metadata[docLabel] = value;
-            }
-            else if(dateRegex.test(label)) {
-                //if no data don't generate a document, just skip
-                if(value != noData) {
-                    let date = dateParser(label);
-                    //probably want the value to be stored numerically
-                    let valuef = parseFloat(value);
-                    if(Number.isNaN(valuef)) {
-                        console.log(`Warning: Value not 'no data' or parseable as float. Skipping...`);
-                    }
-                    else {
-                        values[date] = valuef;
-                    }
-                }
-            }
-            else {
-                console.log(`Warning: No translation for label ${label}, check schema. Skipping column...`);
-            }
-        });
-
-        //generate and add metadata doc and value docs
-        let metaDoc = schema.getMetaTemplate();
-        Object.keys(metadata).forEach((label) => {
-            if(!metaDoc.setProperty(label, metadata[label])) {
-                console.log(`Warning: Could not set property ${label}, not found in template.`);
-            }
-        });
-        
-        //at least verify skn exists
-        let skn = metaDoc.getProperty("skn");
-        if(skn == undefined || skn == null) {
-            console.log(`Warning: SKN not set. Skipping row...`);
-        }
-        else {
-            //send site metadata to ingestor if limit not reached
-            if(metaSent < metaLimit) {
-                sendChain = sendChain.then(null, (e) => {
-                    console.error(e);
-                })
-                .finally(() => {
-                    return sendData(metaDoc.toJSON(), "meta");
-                });
-                metaSent++;
-            }
-
-            
-            //value docs
-            valueFields = {
-                skn: skn,
-                date: null,
-                value: null
-            }
-            let dates = Object.keys(values);
-            //iterate over values and check if value limit reached for both individual station and total
-            for(let i = 0; i < dates.length, i < valueLimitI, valueSent < valueLimit; i++, valueSent++) {
-                date = dates[i];
-                valueFields.date = date;
-                valueFields.value = values[date];
-                let valueDoc = schema.getValueTemplate();
-                Object.keys(valueFields).forEach((label) => {
-                    if(!valueDoc.setProperty(label, valueFields[label])) {
-                        console.log(`Warning: Could not set property ${label}, not found in template.`);
-                    }
-                });
-
-                //send value to ingestor
-                sendChain = sendChain.then(null, (e) => {
-                    console.error(e);
-                })
-                .finally(() => {
-                    return sendData(valueDoc.toJSON(), "value");
-                });
-            }
-        }
-        
-    }
-
-    sendChain.then(null, (e) => {
-        console.error(e);
-    })
-    .finally(() => {
+    recursivePromiseLoop(headers, dataRows).then(() => {
         complete();
     });
 }, (e) => {
     errorExit(e);
 });
+
+
+function processRow(headers, row) {
+    let sendPromises = [];
+    //if both limits reached just resolve promise with true to signal stop
+    if(metaSent >= metaLimit && valueSent >= valueLimit) {
+        return new Promise.resolve(true);
+    }
+
+    let metadata = {};
+    let values = {};
+
+    headers.forEach((label, j) => {
+        let value = row[j];
+        let docLabel = schemaTrans.meta[label];
+        if(docLabel != undefined) {
+            metadata[docLabel] = value;
+        }
+        else if(dateRegex.test(label)) {
+            //if no data don't generate a document, just skip
+            if(value != noData) {
+                let date = dateParser(label);
+                //probably want the value to be stored numerically
+                let valuef = parseFloat(value);
+                if(Number.isNaN(valuef)) {
+                    console.log(`Warning: Value not 'no data' or parseable as float. Skipping...`);
+                }
+                else {
+                    values[date] = valuef;
+                }
+            }
+        }
+        else {
+            console.log(`Warning: No translation for label ${label}, check schema. Skipping column...`);
+        }
+    });
+
+    //generate and add metadata doc and value docs
+    let metaDoc = schema.getMetaTemplate();
+    Object.keys(metadata).forEach((label) => {
+        if(!metaDoc.setProperty(label, metadata[label])) {
+            console.log(`Warning: Could not set property ${label}, not found in template.`);
+        }
+    });
+
+    //at least verify skn exists
+    let skn = metaDoc.getProperty("skn");
+    if(skn == undefined || skn == null) {
+        console.log(`Warning: SKN not set. Skipping row...`);
+    }
+    else {
+        //send site metadata to ingestor if limit not reached
+        if(metaSent < metaLimit) {
+            sendPromises.push(sendData(metaDoc.toJSON(), "meta").then(null, (e) => {
+                //print error
+                console.error(e);
+                //add to fault limit
+                if(++faults > faultLimit) {
+                    errorExit(new Error("Fault limit reached. Too many send failures."));
+                }
+            }));
+            metaSent++;
+        }
+
+        
+        //value docs
+        valueFields = {
+            skn: skn,
+            date: null,
+            value: null
+        }
+        let dates = Object.keys(values);
+        //iterate over values and check if value limit reached for both individual station and total
+        for(let i = 0; i < dates.length, i < valueLimitI, valueSent < valueLimit; i++, valueSent++) {
+            date = dates[i];
+            valueFields.date = date;
+            valueFields.value = values[date];
+            let valueDoc = schema.getValueTemplate();
+            Object.keys(valueFields).forEach((label) => {
+                if(!valueDoc.setProperty(label, valueFields[label])) {
+                    console.log(`Warning: Could not set property ${label}, not found in template.`);
+                }
+            });
+
+            sendPromises.push(sendData(valueDoc.toJSON(), "value").then(null, (e) => {
+                //print error
+                console.error(e);
+                //add to fault limit
+                if(++faults > faultLimit) {
+                    errorExit(new Error("Fault limit reached. Too many send failures."));
+                }
+            }));
+        }
+    }
+
+    //wait for all send promises to resolve, then indicate to continue
+    return Promise.all(sendPromises).then(() => {
+        //don't stop me now
+        return false;
+    }, (e) => {
+        //should never happen, even on send error promises should be resolved in then clause
+        console.error(e.toString());
+        errorExit(new Error("Could not resolve all send promises."));
+    });
+}
+
+//drives main loop, wait for each row to complete before moving on
+//let's also shift the data rows array to clear up even more memory, so no need index tracker, just use 0 index
+function recursivePromiseLoop(headers, dataRows) {
+
+    //return promise when all row send calls are complete
+    return processRow(headers, dataRows.shift()).then((stop) => {
+        //complete if no more rows or stop signalled
+        if(dataRows.length == 0 || stop) {
+            return;
+        }
+        return recursivePromiseLoop(headers, dataRows);
+    });
+}
