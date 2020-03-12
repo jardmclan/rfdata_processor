@@ -321,6 +321,7 @@ csvParser.parseCSV(dataFile, true).then((data) => {
     errorExit(e);
 });
 
+console.log(JSON.stringify(process.env));
 let i = -1;
 function processRow(headers, row) {
     i++;
@@ -335,8 +336,8 @@ function processRow(headers, row) {
     let values = {};
 
     headers.forEach((label, j) => {
-        console.log(i, j);
-        console.log(JSON.stringify(process.memoryUsage()));
+        //console.log(i, j);
+        //console.log(JSON.stringify(process.memoryUsage()));
         let value = row[j];
         let docLabel = schemaTrans.meta[label];
         if(docLabel != undefined) {
