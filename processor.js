@@ -321,9 +321,9 @@ csvParser.parseCSV(dataFile, true).then((data) => {
     errorExit(e);
 });
 
-let i = 0;
+let i = -1;
 function processRow(headers, row) {
-    console.log(i++);
+    i++;
     
     let sendPromises = [];
     //if both limits reached just resolve promise with true to signal stop
@@ -335,7 +335,7 @@ function processRow(headers, row) {
     let values = {};
 
     headers.forEach((label, j) => {
-        console.log(j);
+        console.log(i, j);
         console.log(JSON.stringify(process.memoryUsage()));
         let value = row[j];
         let docLabel = schemaTrans.meta[label];
