@@ -321,8 +321,10 @@ csvParser.parseCSV(dataFile, true).then((data) => {
     errorExit(e);
 });
 
-
+let i = 0;
 function processRow(headers, row) {
+    console.log(i++);
+    console.log(JSON.stringify(process.memoryUsage()));
     let sendPromises = [];
     //if both limits reached just resolve promise with true to signal stop
     if(metaSent >= metaLimit && valueSent >= valueLimit) {
