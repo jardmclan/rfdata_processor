@@ -272,6 +272,14 @@ ingestionCoordinator.stderr.on("data", (chunk) => {
     console.error(`Error in coordinator process: ${chunk.toString()}`);
 });
 
+//------------DEBUGGING-------------
+ingestionCoordinator.stdout.on("data", (chunk) => {
+    //compare memory usage
+    console.log(`Coordinator:\n${chunk}`);
+    console.log(`Main:\n${JSON.stringify(process.memoryUsage())}`);
+});
+//------------DEBUGGING-------------
+
 //if coordination thread exits with an error code exit process imediately
 ingestionCoordinator.on("exit", (code) => {
     if(code > 0) {
