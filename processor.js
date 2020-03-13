@@ -227,11 +227,13 @@ function sendData(metadata, type) {
             cleanup: cleanup,
             container: containerLoc
         };
+        console.log(`Main (before send):\n${JSON.stringify(process.memoryUsage())}`);
         ingestionCoordinator.send(message, (e) => {
             if(e) {
                 reject(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
             }
             else {
+                console.log(`Main (send cb):\n${JSON.stringify(process.memoryUsage())}`);
                 resolve();
             }
         });
@@ -276,7 +278,6 @@ ingestionCoordinator.stderr.on("data", (chunk) => {
 ingestionCoordinator.stdout.on("data", (chunk) => {
     //compare memory usage
     console.log(`Coordinator:\n${chunk}`);
-    console.log(`Main:\n${JSON.stringify(process.memoryUsage())}`);
 });
 //------------DEBUGGING-------------
 
@@ -329,7 +330,7 @@ csvParser.parseCSV(dataFile, true).then((data) => {
     errorExit(e);
 });
 
-console.log(JSON.stringify(process.env));
+//console.log(JSON.stringify(process.env));
 let i = -1;
 function processRow(headers, row) {
     i++;
@@ -344,8 +345,8 @@ function processRow(headers, row) {
     let values = {};
 
     headers.forEach((label, j) => {
-        //console.log(i, j);
-        //console.log(JSON.stringify(process.memoryUsage()));
+        console.log(i, j, headers.length);
+        console.log(JSON.stringify(process.memoryUsage()));
         let value = row[j];
         let docLabel = schemaTrans.meta[label];
         if(docLabel != undefined) {
@@ -445,6 +446,7 @@ function recursivePromiseLoop(headers, dataRows) {
 
     //return promise when all row send calls are complete
     return processRow(headers, dataRows.shift()).then((stop) => {
+        console.log(`Main (process row cb):\n${JSON.stringify(process.memoryUsage())}`);
         //complete if no more rows or stop signalled
         if(dataRows.length == 0 || stop) {
             return;
