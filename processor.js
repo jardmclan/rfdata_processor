@@ -209,6 +209,7 @@ let metaSent = 0;
 let valueSent = 0;
 
 function sendData(metadata, type) {
+    console.log(`send data called`);
     return new Promise((resolve, reject) => {
         let name = docNames[type];
         if(name == undefined) {
@@ -227,13 +228,15 @@ function sendData(metadata, type) {
             cleanup: cleanup,
             container: containerLoc
         };
-        console.log(`Main (before send):\n${JSON.stringify(process.memoryUsage())}`);
+        console.log(`before send`);
+        //console.log(`Main (before send):\n${JSON.stringify(process.memoryUsage())}`);
         ingestionCoordinator.send(message, (e) => {
             if(e) {
                 reject(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
             }
             else {
-                console.log(`Main (send cb):\n${JSON.stringify(process.memoryUsage())}`);
+                console.log(`send cb`);
+                //console.log(`Main (send cb):\n${JSON.stringify(process.memoryUsage())}`);
                 resolve();
             }
         });
@@ -277,7 +280,7 @@ ingestionCoordinator.stderr.on("data", (chunk) => {
 //------------DEBUGGING-------------
 ingestionCoordinator.stdout.on("data", (chunk) => {
     //compare memory usage
-    console.log(`Coordinator:\n${chunk}`);
+    //console.log(`Coordinator:\n${chunk}`);
 });
 //------------DEBUGGING-------------
 
@@ -345,8 +348,8 @@ function processRow(headers, row) {
     let values = {};
 
     headers.forEach((label, j) => {
-        console.log(i, j, headers.length);
-        console.log(JSON.stringify(process.memoryUsage()));
+        //console.log(i, j, headers.length);
+        //console.log(JSON.stringify(process.memoryUsage()));
         let value = row[j];
         let docLabel = schemaTrans.meta[label];
         if(docLabel != undefined) {
@@ -387,6 +390,7 @@ function processRow(headers, row) {
     else {
         //send site metadata to ingestor if limit not reached
         if(metaSent < metaLimit) {
+            console.log(`calling send data`);
             sendPromises.push(sendData(metaDoc.toJSON(), "meta").then(null, (e) => {
                 //print error
                 console.error(e);
@@ -417,7 +421,7 @@ function processRow(headers, row) {
                     console.log(`Warning: Could not set property ${label}, not found in template.`);
                 }
             });
-
+            console.log("calling send data");
             sendPromises.push(sendData(valueDoc.toJSON(), "value").then(null, (e) => {
                 //print error
                 console.error(e);
