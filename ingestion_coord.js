@@ -57,7 +57,6 @@ process.on("message", (message) => {
     }
     else {
         messageQueue.push(message);
-        process.stdout.write(`${JSON.stringify(process.memoryUsage())}\n`);
         spawnMonitor.emit("messageQueued");
     }
     

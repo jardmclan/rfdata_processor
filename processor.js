@@ -209,7 +209,6 @@ let metaSent = 0;
 let valueSent = 0;
 
 function sendData(metadata, type) {
-    console.log(`send data called`);
     return new Promise((resolve, reject) => {
         let name = docNames[type];
         if(name == undefined) {
@@ -228,15 +227,12 @@ function sendData(metadata, type) {
             cleanup: cleanup,
             container: containerLoc
         };
-        console.log(`before send`);
         //console.log(`Main (before send):\n${JSON.stringify(process.memoryUsage())}`);
         ingestionCoordinator.send(message, (e) => {
             if(e) {
                 reject(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
             }
             else {
-                console.log(`send cb`);
-                //console.log(`Main (send cb):\n${JSON.stringify(process.memoryUsage())}`);
                 resolve();
             }
         });
@@ -277,12 +273,6 @@ ingestionCoordinator.stderr.on("data", (chunk) => {
     console.error(`Error in coordinator process: ${chunk.toString()}`);
 });
 
-//------------DEBUGGING-------------
-ingestionCoordinator.stdout.on("data", (chunk) => {
-    //compare memory usage
-    //console.log(`Coordinator:\n${chunk}`);
-});
-//------------DEBUGGING-------------
 
 //if coordination thread exits with an error code exit process imediately
 ingestionCoordinator.on("exit", (code) => {
@@ -333,10 +323,8 @@ csvParser.parseCSV(dataFile, true).then((data) => {
     errorExit(e);
 });
 
-//console.log(JSON.stringify(process.env));
-let i = -1;
+
 function processRow(headers, row) {
-    i++;
     
     let sendPromises = [];
     //if both limits reached just resolve promise with true to signal stop
@@ -348,8 +336,6 @@ function processRow(headers, row) {
     let values = {};
 
     headers.forEach((label, j) => {
-        //console.log(i, j, headers.length);
-        //console.log(JSON.stringify(process.memoryUsage()));
         let value = row[j];
         let docLabel = schemaTrans.meta[label];
         if(docLabel != undefined) {
@@ -390,7 +376,6 @@ function processRow(headers, row) {
     else {
         //send site metadata to ingestor if limit not reached
         if(metaSent < metaLimit) {
-            console.log(`calling send data`);
             sendPromises.push(sendData(metaDoc.toJSON(), "meta").then(null, (e) => {
                 //print error
                 console.error(e);
@@ -411,7 +396,7 @@ function processRow(headers, row) {
         }
         let dates = Object.keys(values);
         //iterate over values and check if value limit reached for both individual station and total
-        for(let i = 0; i < dates.length, i < valueLimitI, valueSent < valueLimit; i++, valueSent++) {
+        for(let i = 0; i < dates.length && i < valueLimitI && valueSent < valueLimit; i++, valueSent++) {
             date = dates[i];
             valueFields.date = date;
             valueFields.value = values[date];
@@ -421,7 +406,6 @@ function processRow(headers, row) {
                     console.log(`Warning: Could not set property ${label}, not found in template.`);
                 }
             });
-            console.log("calling send data");
             sendPromises.push(sendData(valueDoc.toJSON(), "value").then(null, (e) => {
                 //print error
                 console.error(e);
@@ -450,7 +434,6 @@ function recursivePromiseLoop(headers, dataRows) {
 
     //return promise when all row send calls are complete
     return processRow(headers, dataRows.shift()).then((stop) => {
-        console.log(`Main (process row cb):\n${JSON.stringify(process.memoryUsage())}`);
         //complete if no more rows or stop signalled
         if(dataRows.length == 0 || stop) {
             return;
