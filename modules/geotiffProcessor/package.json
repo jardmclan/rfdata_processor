@@ -1,0 +1,14 @@
+{
+  "name": "geotiffprocessor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "geotiffProcessor.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "geotiff": "^1.0.0-beta.7"
+  }
+}
