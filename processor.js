@@ -1,100 +1,107 @@
 const path = require("path");
-const schemaTrans = require("./schema_translation");
-const schema = require("./doc_schema");
-const csvParser = require("./csv_parser");
+const moduleLoader = require("./module_loader.js");
 const {fork} = require("child_process");
 
-let dataFile = null;
-let outDir = null;
 
-let noData = "NA";
+let Controller = null;
+let source = null;
+
+let options = null;
+let outDir = null;
 
 let cleanup = true;
 let containerLoc = null;
-
-let metaLimit = -1;
-let valueLimit = -1;
-let valueLimitI = -1;
+let documentLimit = -1;
 let faultLimit = -1;
-let maxSpawn = 50;
+let retryLimit = 3;
+let maxSpawn = 5;
+let notificationInterval = -1;
+let highWaterMark = 100 * Math.pow(2, 20);
 
-let docNames = {
-    meta: "meta_test",
-    value: "value_test"
-};
 
 //-------------parse args--------------------
 
 let helpString = "Available arguments:\n"
-+ "-f, --input-file: Required. CSV to convert to documents.\n"
++ "-m, --module: Required. The controller module for generating metadata documents, either by name if registered in the module index file, or by path. May be followed by a JSON string options argument, otherwise all further arguments will be parsed as module options.\n"
 + "-o, --output_directory: Required. Directory to write JSON documents and other output.\n"
-+ "-mn, --meta_document_name: Optional. Name for site metadata documents. Default value 'meta_test'.\n"
-+ "-vn, --value_document_name: Optional. Name for site value documents. Default value 'value_test'.\n"
-+ "-nd, --nodata_value: Optional. No data value in input document. Default value 'NA'.\n"
 + "-nc, --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
-+ "-ml, --metadata_document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
-+ "-vl, --value_document_limit: Optional. Limit the number of value documents to be ingested. Negative value indicates no limit. Default value -1.\n"
-+ "-vli, --value_document_limit_individual: Optional. Limit the number of value documents to be ingested per rainfall station. Negative value indicates no limit. Default value -1.\n"
++ "-l, --document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-rl, --retry-limit: Optional. Limit the number of times to retry a document ingestion on failure before counting it as a fault. Negative value indicates no limit. Default value 3.\n"
 + "-fl, --fault_limit: Optional. Limit the number of metadata ingestion faults before failing. Negative value indicates no limit. Default value -1.\n"
-+ "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image.\n"
-+ "-s, --max_spawn: Optional. The maximum number of ingestor processes to spawn at once. Note that the total number of processes will be n+2 (main process and coordinator process). Default value 50.\n"
++ "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image. Note that faults may not be properly detected when using agave containerization.\n"
++ "-s, --max_spawn: Optional. The maximum number of ingestor processes to spawn at once. Note that the total number of processes will be n+2 (main process and coordinator process) and does not include processes spawned by controller implementaitons (which may have their own max spawn option). Default value 5.\n"
++ "-hw, --high_water_mark: Optional. Size of message queue before attempting to throttling message source. Can be provided in bytes, KB (K suffix), MB (M suffix), or GB (G suffix). Negative value indicates no limit. Default value 100M\n"
++ "-i, --notification_interval: Optional. Print a notification to stdout after this many documents. Negative value indicates never print notification. Default value -1\n"
 + "-h, --help: Show this message.\n";
 
-function invalidArgs() {
-    console.error(helpString);
-    process.exit(1);
+function invalidArgs(message) {
+    console.error(message);
+    process.exit(2);
 }
 
-function helpAndTerminate() {
-    console.log(helpString);
+function helpAndTerminate(message) {
+    console.log(message);
     process.exit(0);
 }
 
 let args = process.argv.slice(2);
+argLoop:
 for(let i = 0; i < args.length; i++) {
     switch(args[i]) {
-        case "-f":
-        case "--input_file": {
+        case "-m":
+        case "--module": {
             //get next arg, ensure not out of range
             if(++i >= args.length) {
-                invalidArgs();
+                invalidArgs(helpString);
             }
-            dataFile = args[i];
+            let controller = args[i];
+            //set up controller so have available for options parsing
+            try {
+                Controller = moduleLoader.load(controller);
+            }
+            catch(e) {
+                errorExit(`Error getting controller.\n${e.tosString()}`);
+            }
+            //check if options provided (not required, use empty object if not)
+            let nextArgC = i + 1;
+            if(nextArgC < args.length) {
+                nextArg = args[nextArgC];
+                //check if next arg is a valid JSON string and skip if not
+                try {
+                    //json parse requires double quotes, allow single quote use in arg so don't have to escape when typing
+                    nextArg.replace(/'/g, '"');
+                    options = JSON.parse(nextArg);
+                    //if setting options didn't throw an error then consume the next argument
+                    i++;
+                }
+                catch(e) {}
+            }
+            //if options parameter wasn't set then process remaining arguments as controller options
+            if(options === null) {
+                let result = Controller.parseArgs(args.slice(i + 1));
+                if(result.success) {
+                    if(typeof result.result == "string") {
+                        helpAndTerminate(`Help message from controller module:\n${result.result}`);
+                    }
+                    else {
+                        options = result.result;
+                    }
+                }
+                else {
+                    //print help message from result object
+                    invalidArgs(`Error processing controller module args:\n${result.result}`);
+                }
+                //break out of arg loop (already processed rest of args)
+                break argLoop;
+            }
             break;
         }
         case "-o":
         case "-output_directory": {
             if(++i >= args.length) {
-                invalidArgs();
+                invalidArgs(helpString);
             }
             outDir = args[i];
-            break;
-        }
-        case "-mn":
-        case "--meta_document_name": {
-            //get next arg, ensure not out of range
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            docNames.meta = args[i];
-            break;
-        }
-        case "-vn":
-        case "--value_document_name": {
-            //get next arg, ensure not out of range
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            docNames.value = args[i];
-            break;
-        }
-        case "-nd":
-        case "--nodata_value": {
-            //get next arg, ensure not out of range
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            noData = args[i];
             break;
         }
         case "-nc":
@@ -102,47 +109,36 @@ for(let i = 0; i < args.length; i++) {
             cleanup = false;
             break;
         }
-        case "-ml":
-        case "--matadata_document_limit": {
+        case "-l":
+        case "--document_limit": {
             if(++i >= args.length) {
-                invalidArgs();
+                invalidArgs(helpString);
             }
-            metaLimit = parseInt(args[i]);
-            if(isNaN(metaLimit)) {
-                invalidArgs();
-            }
-            break;
-        }
-        case "-vl":
-        case "--value_document_limit": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            valueLimit = parseInt(args[i]);
-            if(isNaN(valueLimit)) {
-                invalidArgs();
-            }
-            break;
-        }
-        case "-vli":
-        case "--value_document_limit_individual": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            valueLimitI = parseInt(args[i]);
-            if(isNaN(valueLimitI)) {
-                invalidArgs();
+            documentLimit = parseInt(args[i]);
+            if(isNaN(documentLimit)) {
+                invalidArgs(helpString);
             }
             break;
         }
         case "-fl":
         case "--fault_limit": {
             if(++i >= args.length) {
-                invalidArgs();
+                invalidArgs(helpString);
             }
             faultLimit = parseInt(args[i]);
             if(isNaN(faultLimit)) {
-                invalidArgs();
+                invalidArgs(helpString);
+            }
+            break;
+        }
+        case "-rl":
+        case "--retry_limit": {
+            if(++i >= args.length) {
+                invalidArgs(helpString);
+            }
+            retryLimit = parseInt(args[i]);
+            if(isNaN(retryLimit)) {
+                invalidArgs(helpString);
             }
             break;
         }
@@ -150,7 +146,7 @@ for(let i = 0; i < args.length; i++) {
         case "--containerized": {
             //get next arg, ensure not out of range
             if(++i >= args.length) {
-                invalidArgs();
+                invalidArgs(helpString);
             }
             containerLoc = args[i];
             break;
@@ -158,46 +154,117 @@ for(let i = 0; i < args.length; i++) {
         case "-s":
         case "--max_spawn": {
             if(++i >= args.length) {
-                invalidArgs();
+                invalidArgs(helpString);
             }
             maxSpawn = parseInt(args[i]);
             if(isNaN(maxSpawn)) {
-                invalidArgs();
+                invalidArgs(helpString);
+            }
+            break;
+        }
+        case "-hw":
+        case "--high_water_mark": {
+            if(++i >= args.length) {
+                invalidArgs(helpString);
+            }
+            highWaterMark = parseToBytes(args[i]);
+            //make sure argument was valid, returns null if not
+            if(highWaterMark === null) {
+                invalidArgs(helpString);
+            }
+            break;
+        }
+        case "-i":
+        case "--notification_interval": {
+            if(++i >= args.length) {
+                invalidArgs(helpString);
+            }
+            notificationInterval = parseInt(args[i]);
+            if(isNaN(notificationInterval)) {
+                invalidArgs(helpString);
             }
             break;
         }
         case "-h":
         case "--help": {
-            helpAndTerminate();
+            helpAndTerminate(helpString);
             break;
         }
         default: {
-            invalidArgs();
+            invalidArgs(helpString);
         }
     }
 }
 
-//need to specify data file and output directory
-if(dataFile == null || outDir == null) {
-    invalidArgs();
+//need to specify controller and output directory
+if(Controller == null || outDir == null) {
+    invalidArgs(helpString);
 }
 
-//convert negative limits to infinity for easier comparisons
-if(metaLimit < 0) {
-    metaLimit = Number.POSITIVE_INFINITY;
-}
-if(valueLimit < 0) {
-    valueLimit = Number.POSITIVE_INFINITY;
-}
-if(valueLimitI < 0) {
-    valueLimitI = Number.POSITIVE_INFINITY;
-}
+//convert negative limits to infinity for easier comparisons (keep coordinator values negative for arg translation)
 if(faultLimit < 0) {
     faultLimit = Number.POSITIVE_INFINITY;
 }
+if(documentLimit < 0) {
+    documentLimit = Number.POSITIVE_INFINITY;
+}
+if(notificationInterval < 0) {
+    notificationInterval = Number.POSITIVE_INFINITY;
+}
 
+//parse highwatermark arg to bytes
+function parseToBytes(size) {
+    let sizeInBytes = null;
+    //check if suffixed
+    let suffix = size.slice(-1).toUpperCase();
+    switch(suffix) {
+        case "K": {
+            //remove suffix and parse as number
+            let sizef = parseFloat(size.slice(0, -1));
+            //return null if can't parse size as number
+            if(!isNaN(sizef)) {
+                //size is in KB, scale accordingly
+                sizef *= Math.pow(2, 10);
+                sizeInBytes = sizef;
+            }
+            break;
+        }
+        case "M": {
+            //remove suffix and parse as number
+            let sizef = parseFloat(size.slice(0, -1));
+            //return null if can't parse size as number
+            if(!isNaN(sizef)) {
+                //size is in MB, scale accordingly
+                sizef *= Math.pow(2, 20);
+                sizeInBytes = sizef;
+            }
+            break;
+        }
+        case "G": {
+            //remove suffix and parse as number
+            let sizef = parseFloat(size.slice(0, -1));
+            //return null if can't parse size as number
+            if(!isNaN(sizef)) {
+                //size is in GB, scale accordingly
+                sizef *= Math.pow(2, 30);
+                sizeInBytes = sizef;
+            }
+            break;
+        }
+        default: {
+            //parse size as number
+            let sizef = parseFloat(size);
+            //return null if can't parse size as number
+            if(!isNaN(sizef)) {
+                sizeInBytes = sizef;
+            }
+        }
+    }
+    return sizeInBytes;
+}
 
 //-------------end parse args--------------------
+
 
 
 //just use sequential ids, also serves as a counter for the number of docs for exiting
@@ -205,23 +272,21 @@ let docID = 0;
 let returned = 0;
 let allSent = false;
 
-let metaSent = 0;
-let valueSent = 0;
+//verify that document has required name and value fields
+function validateDocument(document) {
+    return document.name !== undefined && document.value !== undefined;
+}
 
-function sendData(metadata, type) {
-    let name = docNames[type];
-    if(name == undefined) {
-        console.error(`Error: Document type ${type} is not defined. Could not add metadata document.`);
+function sendData(metadata) {
+    if(!validateDocument(metadata)) {
+        console.error(`Error: Received invalid document from controller. Document must have name and value fields.`);
+        return;
     }
-    wrappedMeta = {
-        name: name,
-        value: metadata
-    };
     let id = docID++;
     let fname = path.join(outDir, `metadoc_${id}.json`);
     let message = {
         id: id,
-        data: JSON.stringify(wrappedMeta),
+        data: JSON.stringify(metadata),
         fname: fname,
         cleanup: cleanup,
         container: containerLoc
@@ -234,159 +299,173 @@ function sendData(metadata, type) {
 }
 
 function complete() {
-    ingestionCoordinator.send(null);
-    allSent = true;
+    //make sure this hasn't already been called
+    if(!allSent) {
+        //signal to coordinator that all documents have been sent
+        ingestionCoordinator.send(null);
+        //set flag to indicate complete
+        allSent = true;
+    }
 }
 
 
+let ingestorOptions = {
+    highWaterMark: highWaterMark,
+    maxSpawn: maxSpawn,
+    retry: retryLimit
+};
 
-function dateParser(date) {
-    //remove x at beginning
-    let sd = date.slice(1);
-    //let's manually convert to iso string so we don't have to worry about js date potentially adding a timezone offset
-    let isoDate = sd.replace(/\./g, "-") + "T00:00:00.000Z";
-    return isoDate;
-}
-
-
-let ingestionCoordinator = fork("ingestion_coord.js", [maxSpawn.toString()], {stdio: "pipe"});
+let ingestionCoordinator = fork("ingestion_coord.js", [JSON.stringify(ingestorOptions)], {stdio: "pipe"});
 
 function errorExit(e) {
     console.error(`An error has occurred, the process will exit.\n${e.toString()}`);
-    if(ingestionCoordinator) {
-        ingestionCoordinator.kill("SIGABRT");
-    }
+    cleanupFunct();
     process.exit(1);
 }
 
-//push errors from coordination thread to stderr
-ingestionCoordinator.stderr.on("data", (chunk) => {
-    console.error(`Error in coordinator process: ${chunk.toString()}`);
-});
-
-//if coordination thread exits with an error code exit process imediately
-ingestionCoordinator.on("exit", (code) => {
-    if(code > 0) {
-        console.error(`Error: Coordinator process has exited with a non-zero exit code. Error code ${code}.`);
+function cleanupFunct() {
+    //kill the coordinator process if process handle exists
+    if(ingestionCoordinator) {
+        ingestionCoordinator.kill("SIGKILL");
     }
-    process.exit(1);
-});
+    //destroy source
+    if(source) {
+        source.destroy();
+    }
+}
 
-let faults = 0;
-ingestionCoordinator.on("message", (message) => {
+//message should have a value type and value
+function processMessage(message) {
+    switch(message.type) {
+        //control messages, use to throttle input document stream
+        case "control": {
+            controlMessageHandler(message.value);
+            break;
+        }
+        //result messages
+        case "result": {
+            resultMessageHandler(message.value);
+            break;
+        }
+        //?
+        default: {
+            console.error("Unrecognized message type received from coordinator.");
+        }
+    }
+}
+
+let controlPause = false;
+
+function controlMessageHandler(message) {
+    switch(message) {
+        //message queue is at high water mark, please stop sending messages
+        case "pause": {
+            controlPause = true;
+            //pause document source
+            source.pause();
+            break;
+        }
+        //go ahead and send more
+        case "resume": {
+            controlPause = false;
+            //resume document source, don't worry about checking for data throttle, breaking that isn't too important
+            source.resume();
+            break;
+        }
+    }
+}
+
+function resultMessageHandler(message) {
     if(!message.result.success) {
+        console.error(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
         if(++faults > faultLimit) {
             errorExit(new Error("Fault limit reached. Too many metadata ingestor processes exited with an error."));
         }
-        console.error(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
     }
     else if(message.result.pof != null) {
         console.log(`Warning: An error occured after metadata insertion.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
     }
 
-    if(++returned >= docID && allSent) {
+    returned++;
+    if(returned % notificationInterval == 0) {
+        console.log(`Finished ${returned} documents.`);
+    }
+
+    if(returned >= docID && allSent) {
         console.log("Complete!");
         process.exit(0);
     }
+}
+
+
+
+//push errors from coordination process to stderr
+ingestionCoordinator.stderr.on("data", (chunk) => {
+    console.error(`Error in coordinator process: ${chunk.toString()}`);
 });
 
-csvParser.parseCSV(dataFile, true).then((data) => {
-    //run through trim map to remove any extraneous whitespace that may have been left in the file
-    let headers = data.headers.map((header) => {
-        return header.trim();
-    });
-    let dataRows = data.values.map((row) => {
-        return row.map((value) => {
-            return value.trim();
-        });
-    });
-
-    dateRegex = new RegExp(schemaTrans.date);
-
-    for(let i = 0; i < dataRows.length; i++) {
-        //if both limits reached just break, no need to process the rest of the rows
-        if(metaSent >= metaLimit && valueSent >= valueLimit) {
-            break;
-        }
-
-        let row = dataRows[i];
-
-        let metadata = {};
-        let values = {};
-
-        headers.forEach((label, j) => {
-            let value = row[j];
-            let docLabel = schemaTrans.meta[label];
-            if(docLabel != undefined) {
-                metadata[docLabel] = value;
-            }
-            else if(dateRegex.test(label)) {
-                //if no data don't generate a document, just skip
-                if(value != noData) {
-                    let date = dateParser(label);
-                    //probably want the value to be stored numerically
-                    let valuef = parseFloat(value);
-                    if(Number.isNaN(valuef)) {
-                        console.log(`Warning: Value not 'no data' or parseable as float. Skipping...`);
-                    }
-                    else {
-                        values[date] = valuef;
-                    }
-                }
-            }
-            else {
-                console.log(`Warning: No translation for label ${label}, check schema. Skipping column...`);
-            }
-        });
-
-        //generate and add metadata doc and value docs
-        let metaDoc = schema.getMetaTemplate();
-        Object.keys(metadata).forEach((label) => {
-            if(!metaDoc.setProperty(label, metadata[label])) {
-                console.log(`Warning: Could not set property ${label}, not found in template.`);
-            }
-        });
-        
-        //at least verify skn exists
-        let skn = metaDoc.getProperty("skn");
-        if(skn == undefined || skn == null) {
-            console.log(`Warning: SKN not set. Skipping row...`);
-        }
-        else {
-            //send site metadata to ingestor if limit not reached
-            if(metaSent < metaLimit) {
-                sendData(metaDoc.toJSON(), "meta");
-                metaSent++;
-            }
-
-            
-            //value docs
-            valueFields = {
-                skn: skn,
-                date: null,
-                value: null
-            }
-            let dates = Object.keys(values);
-            //iterate over values and check if value limit reached for both individual station and total
-            for(let i = 0; i < dates.length, i < valueLimitI, valueSent < valueLimit; i++, valueSent++) {
-                date = dates[i];
-                valueFields.date = date;
-                valueFields.value = values[date];
-                let valueDoc = schema.getValueTemplate();
-                Object.keys(valueFields).forEach((label) => {
-                    if(!valueDoc.setProperty(label, valueFields[label])) {
-                        console.log(`Warning: Could not set property ${label}, not found in template.`);
-                    }
-                });
-
-                //send value to ingestor
-                sendData(valueDoc.toJSON(), "value");
-            }
-        }
-        
+//if coordination process exits with an error code exit process imediately
+ingestionCoordinator.on("exit", (code) => {
+    if(code != 0) {
+        console.error(`Error: Coordinator process has exited with a non-zero exit code. Error code ${code}.`);
+        process.exit(1);
     }
+});
 
+let faults = 0;
+ingestionCoordinator.on("message", (message) => {
+    processMessage(message);
+});
+
+
+let documentsReceived = 0;
+source = new Controller(options);
+
+
+source.on("data", (data) => {
+
+    //throttle source by pausing until end of event queue to allow message to send before adding more
+    //otherwise a huge number of messages may back up and send before having a chance to receive control messages from coordinator
+    source.pause();
+    sendData(data);
+    setTimeout(() => {
+        //check if paused by a control message
+        if(!controlPause) {
+            source.resume();
+        }
+    }, 0);
+
+    
+    //if at document limit destroy source and complete
+    if(++documentsReceived >= documentLimit) {
+        source.destroy();
+        complete();
+    }
+});
+
+source.on("end", () => {
     complete();
-}, (e) => {
+});
+
+source.on("warning", (message) => {
+    console.log(`Warning from controller:\n${message}`);
+});
+
+source.on("error", (e) => {
+    errorExit(`Error in controller.\n${e.toString()}`);
+});
+
+
+
+//catch interrupts and uncaught exceptions and cleanup
+//still sometimes leaves zombies? Probably not cleaning up coordinator processes properly
+//should add cleanup process in coordinator
+process.on("SIGINT", function() {
+    console.log("Caught interrupt, exitting...");
+    cleanupFunct();
+    process.exit(0);
+});
+
+process.on("uncaughtException", (e) => {
     errorExit(e);
 });

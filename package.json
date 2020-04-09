@@ -15,5 +15,6 @@
   "bugs": {
     "url": "https://github.com/jardmclan/rfdata_processor/issues"
   },
-  "homepage": "https://github.com/jardmclan/rfdata_processor#readme"
+  "homepage": "https://github.com/jardmclan/rfdata_processor#readme",
+  "dependencies": {}
 }

@@ -1,56 +1,64 @@
-import geotiff from "geotiff";
-const fs = require("fs");
+const geotiff = require("geotiff");
 
-//index
+if(process.argv.length < 3) {
+    process.stderr.write("Invalid args. Requires filepath.", cb = () => {
+        process.exit(2);
+    });
+}
 
-//files expected to have single "0" band
+fpath = process.argv[2];
 
-//check if need custom no data still
-//get file name from index, test for now
-let fpath = "";
+header = null;
+if(process.argv.length > 3) {
+    try {
+        header = JSON.parse(header);
+    }
+    catch(e) {
+        process.stderr.write(`Error parsing header\n${e}`, cb = () => {
+            process.exit(2);
+        });
+    }
+    
+}
+getDataFromGeoTIFFFile(fpath, header).then((data) => {
+    //send data back to parent and exit
+    process.send(data, callback = () => {
+        process.exit(0);
+    });
+}, (e) => {
+    //write error and exit
+    process.stderr.write(`An error has occured while getting geotiff data\n${e}`, cb = () => {
+        process.exit(1);
+    });
+});
 
 
-this.header = null;
-
-
-function getDataFromGeoTIFFFile(fpath) {
-
+function getDataFromGeoTIFFFile(fpath, validHeader = null) {
     return new Promise((resolve, reject) => {
-        fs.readFile(fpath, (e, data) => {
-            if(e) {
-                return reject(e);
-            }
-            getRasterDataFromGeoTIFFArrayBuffer(data, bands = ["0"]).then((raster) => {
-                raster.header;
-                raster.bands["0"];
-                if(this.header == null) {
-                    this.header = raster.header;
-                }
-                else {
-                    //compare with stored header and reject if doesnt match
-                    for(let field in header) {
-                        if(raster.header[field] != this.raster.header[field]) {
-                            return reject("Header mismatch");
-                        }
+        getRasterDataFromGeoTIFFArrayBuffer(fpath, -3.3999999521443642e+38, ["0"]).then((raster) => {
+            if(validHeader != null) {
+                //compare with stored header and reject if doesnt match
+                for(let field in raster.header) {
+                    if(raster.header[field] != validHeader[field]) {
+                        return reject("Header mismatch");
                     }
                 }
-                resolve(raster.bands["0"]);
-            }, (e) => {
-                reject(e);
+            }
+            //resolve with indexed values
+            resolve({
+                header: raster.header,
+                values: raster.bands["0"]
             });
-            
+        }, (e) => {
+            reject(e);
         });
     });
-
-    //if raster header already set then verify header the same (reject if not), otherwise set header
-    //return indexed values (should only have the one band)
-
 }
 
 
 //return header and bands
-function getRasterDataFromGeoTIFFArrayBuffer(data, customNoData = undefined, bands = undefined) {
-    return geotiff.fromArrayBuffer(data).then((tiff) => {
+function getRasterDataFromGeoTIFFArrayBuffer(fpath, customNoData = undefined, bands = undefined) {
+    return geotiff.fromFile(fpath).then((tiff) => {
       return tiff.getImage().then((image) => {
         //are tiepoints indexed by cooresponding band? Assume at 0
         let tiepoint = image.getTiePoints()[0];
@@ -71,7 +79,6 @@ function getRasterDataFromGeoTIFFArrayBuffer(data, customNoData = undefined, ban
                 }
     
                 let noData = Number.parseFloat(fileDirectory.GDAL_NODATA);
-    
                 geotiffData.header = {
                     nCols: image.getWidth(),
                     nRows: image.getHeight(),
@@ -97,7 +104,6 @@ function getRasterDataFromGeoTIFFArrayBuffer(data, customNoData = undefined, ban
                     }
                     geotiffData.bands[band] = valueMap;
                 }
-                
                 resolve(geotiffData);
             });
         });

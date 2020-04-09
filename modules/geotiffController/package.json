@@ -1,0 +1,15 @@
+{
+  "name": "geotiffcontroller",
+  "version": "1.0.0",
+  "description": "",
+  "main": "geotiffController.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "geotiff": "^1.0.0-beta.8",
+    "stream-json": "^1.3.3"
+  }
+}

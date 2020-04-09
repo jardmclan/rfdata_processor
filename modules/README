@@ -1,0 +1,2 @@
+Modules for data ingestion should be self contained node modules
+Modules can be registered to a name in the index file

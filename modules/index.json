@@ -1,0 +1,4 @@
+{
+    "geotiffController": "./modules/geotiffController/geotiffController.js",
+    "siteController": "./modules/siteController/siteController.js"
+}

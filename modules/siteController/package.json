@@ -1,14 +1,14 @@
 {
-  "name": "geotiffprocessor",
+  "name": "sitecontroller",
   "version": "1.0.0",
   "description": "",
-  "main": "geotiffProcessor.js",
+  "main": "siteController.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "geotiff": "^1.0.0-beta.7"
+    "stream-csv-as-json": "^1.0.2"
   }
 }

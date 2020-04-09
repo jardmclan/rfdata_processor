@@ -9,7 +9,7 @@ function parseCSV(dataFile, firstRowHeader) {
     return new Promise((resolve, reject) => {
         fs.readFile(dataFile, "utf8", (e, data) => {
             if(e) {
-                reject(e);
+                return reject(e);
             }
     
             //handles windows or unix style rowend (think the spec only specified windows style, but better to be robust)

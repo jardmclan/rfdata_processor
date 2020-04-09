@@ -86,14 +86,16 @@ process.on("message", (message) => {
             result.success = false
             result.pof = "add_meta";
             result.error = e.toString();
-            process.send(result, callback = () => {
-                //file was written, so try to cleanup, ignore any errors
-                if(cleanup) {
-                    cleanupFile(fname).finally(() => {
+            //file was written, so try to cleanup, ignore any errors
+            if(cleanup) {
+                cleanupFile(fname).finally(() => {
+                    //wait to send result until after cleanup finished so number of processes doesn't spike due to extra processing after result returned
+                    process.send(result, callback = () => {
                         process.exit(1);
                     });
-                }
-            });
+                });
+            }
+            
         });
     }, (e) => {
         result.success = false
