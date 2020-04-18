@@ -5,6 +5,7 @@ const {fork} = require("child_process");
 
 let Controller = null;
 let source = null;
+let ingestionCoordinator = null;
 
 let options = null;
 let outDir = null;
@@ -60,7 +61,7 @@ for(let i = 0; i < args.length; i++) {
                 Controller = moduleLoader.load(controller);
             }
             catch(e) {
-                errorExit(`Error getting controller.\n${e.tosString()}`);
+                errorExit(`Error getting controller.\n${e.toString()}`);
             }
             //check if options provided (not required, use empty object if not)
             let nextArgC = i + 1;
@@ -315,7 +316,7 @@ let ingestorOptions = {
     retry: retryLimit
 };
 
-let ingestionCoordinator = fork("ingestion_coord.js", [JSON.stringify(ingestorOptions)], {stdio: "pipe"});
+ingestionCoordinator = fork("ingestion_coord.js", [JSON.stringify(ingestorOptions)], {stdio: "pipe"});
 
 function errorExit(e) {
     console.error(`An error has occurred, the process will exit.\n${e.toString()}`);
