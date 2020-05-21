@@ -15,7 +15,7 @@ module_name = "test"
 out_dir = "./"
 
 t_limit = 5
-p_limit = 5
+p_limit = 1
 
 Module = importlib.import_module(module_name)
 
@@ -94,13 +94,13 @@ def __run_ingestor(info, cleanup):
     if error is not None:
         status["success"] = False
         status["pof"] = "write"
-        status["message"] = error
+        status["message"] = str(error)
     else:
         error = __ingest_doc(info["out_file"])
         if error is not None:
             status["success"] = False
             status["pof"] = "ingest"
-            status["message"] = error
+            status["message"] = str(error)
             #still cleanup, but dont store status
             if cleanup:
                 #execute in separate thread since status don't need output, can return status immediately
@@ -111,7 +111,7 @@ def __run_ingestor(info, cleanup):
             error = __cleanup_doc(info["out_file"])
             if error is not None:
                 status["pof"] = "cleanup"
-                status["message"] = error
+                status["message"] = str(error)
 
     return status
 
@@ -133,6 +133,7 @@ def processData(chunk):
         print(status)
 
     def data_handler(data):
+        print("DATA HANDLER CALLED\n\n\n")
         fname = "test_%s.json" % str(id)
         out_file = os.path.join(out_dir, fname)
         info = {
