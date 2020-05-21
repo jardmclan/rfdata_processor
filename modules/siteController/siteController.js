@@ -281,8 +281,6 @@ module.exports = class SiteControllerModule extends GenericModule {
     //specifies how to parse command line arguments to option, returns key value pair as array of length 2, a help message if help flag, or null if invalid
     static parseArgs(args) {
 
-        console.log(`\n\n\n${args}\n\n\n`);
-
         let helpMessage = "Available arguments:\n"
         + "-f, --data_file: Required. CSV file containing the site metadata and values.\n"
         + "-d, --dataset: Required. Identifier for dataset being ingested.\n"
@@ -296,7 +294,6 @@ module.exports = class SiteControllerModule extends GenericModule {
         + "-vli, --value_limit_individual: Optional. Maximum number of value documents to stream for each row. Negative value indicates no limit. Default value -1.\n"
         + "-rl, --row_limit: Optional. Maximum number of rows to process. Negative value indicates no limit. Default value -1.\n"
         + "-h, --help: Show this message.\n"
-
 
 
 

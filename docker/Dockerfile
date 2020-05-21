@@ -11,7 +11,7 @@ RUN git clone -b v2.3 https://github.com/TACC-Cloud/agave-cli.git /usr/local/aga
     chmod +x /usr/local/agave-cli/bin/*
 
 
-COPY ../ /usr/local/ingestor
+COPY . /usr/local/ingestor
 
 ENV PATH /usr/local/agave-cli/bin:$PATH
 
@@ -19,6 +19,6 @@ VOLUME /root/.agave
 
 WORKDIR /usr/local/ingestor
 #RUN npm install
-
-
-ENTRYPOINT ["node", "processor.js"]
+#~ is /root
+ENTRYPOINT ["sh", "-c", "ls ~/.agave"]
+#ENTRYPOINT ["node", "processor.js"]
