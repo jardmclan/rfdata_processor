@@ -487,7 +487,7 @@ module.exports = class GeotiffControllerModule extends GenericModule {
         + "-hw, --high_water_mark: Optional. maximum index document queue size in before pausing document stream. Can be provided in bytes, KB (K suffix), MB (M suffix), or GB (G suffix). Negative value indicates no limit. Default value 100M\n"
         + "-nh, --no_header: Optional. Indicates that no header object should be generated. By default a document containing information on the geotiff file header will be produced.\n"
         + "-vn, --value_name: Optional. Name to assign to value documents. Default value 'value_map'.\n"
-        + "-hn, --header_name: Optional. Name to assign to header document. Default value 'value_map'.\n"
+        + "-hn, --header_name: Optional. Name to assign to header document. Default value 'raster_header'.\n"
         + "-h, --help: Show this message.\n"
 
 
