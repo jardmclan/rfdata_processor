@@ -15,10 +15,11 @@ COPY . /usr/local/ingestor
 
 ENV PATH /usr/local/agave-cli/bin:$PATH
 
-VOLUME /root/.agave
+RUN mkdir /root/.agave
+COPY ./current_store/current /root/.agave/current
 
 WORKDIR /usr/local/ingestor
 #RUN npm install
 #~ is /root
-ENTRYPOINT ["sh", "-c", "ls ~/.agave"]
-#ENTRYPOINT ["node", "processor.js"]
+#ENTRYPOINT ["sh", "-c", "ls ~/.agave"]
+ENTRYPOINT ["node", "processor.js"]

@@ -69,7 +69,7 @@ def __ingest_doc(fpath):
         res = subprocess.run(["sh", ingestor_script, fpath], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
             
         if len(res.stderr) > 0:
-            error = res.stderr.encode("utf8")
+            error = res.stderr.decode("utf-8")
         elif res.returncode != 0:
             error = "Ingestor returned with code %d" % res.returncode
     except Exception as e:
@@ -126,15 +126,22 @@ def doc_ingestor(info, retry, cleanup):
             break
     return status
 
-id = 0
+
+
 def processData(chunk):
+    doc_id = 0
+
     def ingestor_complete_cb(future):
         status = future.result()
         print(status)
 
+   
     def data_handler(data):
-        print("DATA HANDLER CALLED\n\n\n")
-        fname = "test_%s.json" % str(id)
+        nonlocal doc_id
+        print(doc_id)
+        fname = "test_%s.json" % str(doc_id)
+        #need to lock? not atomic, but not multithreaded unless threading document generator
+        doc_id = doc_id + 1
         out_file = os.path.join(out_dir, fname)
         info = {
             "data": data,
