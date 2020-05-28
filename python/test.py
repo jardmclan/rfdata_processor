@@ -1,9 +1,14 @@
 
+from events import Event
+
+from modules.site_module.site_module import Source
+
+
 class Source:
 
 
     def __init__(self, options):
-        self.__event_source = Event
+        self.__event_source = Event()
 
         self.__options = options
 
@@ -17,32 +22,11 @@ class Source:
             self.__event_source.emit("data", {"name": "test", "value": i})
 
         self.__event_source.emit("complete")
-        self.__event_source.emit"finished")
+        self.__event_source.emit("finished")
 
     def on(self, event, cb):
         self.__event_source.on(event, cb)
 
 
 
-    #synchronous event handler (similar to js implementation)
-    class Event:
-
-        def __init__(self, events):
-            self.event_register = {}
-
-            
-
-        def emit(self, event, *args):
-            cbs = self.event_register.get(event)
-            if cbs is None:
-                cbs = []
-            for cb in cbs:
-                cb(*args)
-            
-
-        def on(self, event, cb):
-            cbs = self.event_register.get(event)
-            if cbs is None:
-                cbs = []
-                self.event_register[event] = cbs
-            cbs.append(cb)
+    

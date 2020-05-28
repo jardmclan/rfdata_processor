@@ -423,25 +423,111 @@ let documentsReceived = 0;
 source = new Controller(options);
 
 
-source.on("data", (data) => {
 
-    //throttle source by pausing until end of event queue to allow message to send before adding more
-    //otherwise a huge number of messages may back up and send before having a chance to receive control messages from coordinator
-    source.pause();
-    sendData(data);
-    setTimeout(() => {
-        //check if paused by a control message
-        if(!controlPause) {
-            source.resume();
+
+
+
+
+
+
+
+
+
+//--------------------------------------------
+
+
+function cleanupFile(fname) {
+    return new Promise((resolve, reject) => {
+        fs.unlink(fname, (e) => {
+            if(e) {
+                reject(e)
+            }
+            else {
+                resolve();
+            }
+        });
+    });
+}
+
+function addMeta(metaFile, container) {
+    return new Promise((resolve, reject) => {
+        child = container == null ? spawn("bash", ["./bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["./bin/agave_containerized/add_meta.sh", container, metaFile]);
+        //could not spawn bash process
+        child.on("error", (e) => {
+            reject(e);
+        });
+        child.stderr.on('data', (e) => {
+            reject(e);
+        });
+        child.on('close', (code) => {
+            if(code == 0) {
+                resolve();
+            }
+            else {
+                reject(`Child process exited with code ${code}.`);
+            }
+        });
+    });
+    
+}
+
+
+function ingestData(fname) {
+    return new Promise((resolve, reject) => {
+        addMeta(fname, containerLoc).then(() => {
+            if(cleanup) {
+                cleanupFile(fname).then(() => {
+                    resolve(null)
+                }, (e) => {
+                    resolve(e)
+                })
+            }
+        }, (e) => {
+            reject(e)
+            //still try to cleanup, but ignore output
+            cleanupFile(fname)
+        })
+    });
+    
+}
+
+
+function dataHandler(fname, attempt = 0) {
+
+    return ingestData(fname).then((error) => {
+        return error;
+    }, (error) => {
+        if(attempt++ >= retryLimit) {
+            return Promise.reject(error);
         }
-    }, 0);
+        else {
+            return ingestData(fname, attempt++);
+        }
+    });
 
     
-    //if at document limit destroy source and complete
+}
+
+source.on("data", (fname) => {
+
+    dataHandler(fname).then((error) => {
+        console.log(`Warning: Failed to cleanup file ${fname}\n${error}`);
+    }, (error) => {
+        console.error(`Error: Failed to ingest file ${fname}\n${error}`);
+        if(faults++ >= faultLimit) {
+            errorExit(new Error("Fault limit reached. Too many metadata ingestor processes exited with an error."));
+        }
+    })
+    
+
+    tries = 0;
+
+    documentsReceived
     if(++documentsReceived >= documentLimit) {
-        source.destroy();
-        complete();
+
     }
+    
+    dataHandler(fname);
 });
 
 source.on("end", () => {

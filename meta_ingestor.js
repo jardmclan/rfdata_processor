@@ -1,19 +1,3 @@
-const fs = require("fs");
-const {spawn} = require("child_process");
-
-function writeMeta(fname, metadataString) {
-    return new Promise((resolve, reject) => {
-        fs.writeFile(fname, metadataString, {}, (e) => {
-            if(e) {
-                reject(e)
-            }
-            else {
-                resolve();
-            }
-        });
-    });
-}
-
 function cleanupFile(fname) {
     return new Promise((resolve, reject) => {
         fs.unlink(fname, (e) => {
@@ -49,60 +33,55 @@ function addMeta(metaFile, container) {
     
 }
 
-process.on("message", (message) => {
-    let fname = message.fname;
-    let cleanup = message.cleanup;
-    let data = message.data;
-    let container = message.container;
-
-    let result = {
-        success: true,
-        pof: null,
-        error: null
-    }
-
-    writeMeta(fname, data).then(() => {
-        addMeta(fname, container).then(() => {
-            if(cleanup) {
-                cleanupFile(fname).then(() => {
-                    process.send(result, callback = () => {
-                        process.exit(0);
-                    });
-                }), (e) => {
-                    //no need to set success to false, data ingestion worked, just couldn't clean file
-                    result.pof = "clean";
-                    result.error = e.toString();
-                    process.send(result, callback = () => {
-                        process.exit(1);
-                    });
-                };
+function writeMeta(fname, metadataString) {
+    return new Promise((resolve, reject) => {
+        fs.writeFile(fname, metadataString, {}, (e) => {
+            if(e) {
+                reject(e)
             }
             else {
-                process.send(result, callback = () => {
-                    process.exit(0);
-                });
+                resolve();
             }
-        }, (e) => {
-            result.success = false
-            result.pof = "add_meta";
-            result.error = e.toString();
-            //file was written, so try to cleanup, ignore any errors
-            if(cleanup) {
-                cleanupFile(fname).finally(() => {
-                    //wait to send result until after cleanup finished so number of processes doesn't spike due to extra processing after result returned
-                    process.send(result, callback = () => {
-                        process.exit(1);
-                    });
-                });
-            }
-            
-        });
-    }, (e) => {
-        result.success = false
-        result.pof = "write";
-        result.error = e.toString();
-        process.send(result, callback = () => {
-            process.exit(1);
         });
     });
-});
+}
+
+
+function ingestData(fname, metadata) {
+    metadataString = JSON.stringify(metadata);
+    return new Promise((resolve, reject) => {
+        addMeta(fname, containerLoc).then(() => {
+            if(cleanup) {
+                cleanupFile(fname).then(() => {
+                    resolve(null);
+                }, (e) => {
+                    resolve(e);
+                })
+            }
+        }, (e) => {
+            reject(e)
+            //still try to cleanup, but ignore output
+            cleanupFile(fname);
+        })
+    });
+    
+}
+
+//no communication, set data handler
+
+function dataHandlerRecursive(fname, metadata, attempt = 0) {
+    return ingestData(fname, metadata).then((error) => {
+        return error;
+    }, (error) => {
+        if(attempt++ >= retryLimit) {
+            return Promise.reject(error);
+        }
+        else {
+            return ingestData(fname, attempt++);
+        }
+    });
+}
+
+function dataHandler(fname, metadata) {
+    return dataHandlerRecursive(fname, metadata)
+}

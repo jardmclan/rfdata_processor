@@ -16,5 +16,7 @@
     "url": "https://github.com/jardmclan/rfdata_processor/issues"
   },
   "homepage": "https://github.com/jardmclan/rfdata_processor#readme",
-  "dependencies": {}
+  "dependencies": {
+    "csv-parser": "^2.3.2"
+  }
 }

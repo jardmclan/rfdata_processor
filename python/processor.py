@@ -4,7 +4,7 @@ import subprocess
 
 
 from threading import Thread
-from multiprocessing import Process, Event as Event_p, Manager
+from multiprocessing import Process, Manager
 
 
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor

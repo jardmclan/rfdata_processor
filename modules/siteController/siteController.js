@@ -1,127 +1,677 @@
-const {chain}  = require('stream-chain');
-const {parser} = require('stream-csv-as-json');
-const {asObjects} = require('stream-csv-as-json/AsObjects');
-const {streamValues} = require('stream-json/streamers/StreamValues');
-const GenericModule = require("../../genericModule");
+const csv = require('csv-parser')
 const fs = require("fs");
 const {EventEmitter} = require("events");
-const schemaTrans = require("./schema_translation");
-const schema = require("./doc_schema");
+const schemaTrans = require("./schematranslation");
+const schema = require("./docschema");
+const ingestor = require("../../metaingestor");
+
+
+//-------------parse args--------------------
+
+let options = {
+    dataFile: undefined,
+    dataset: undefined,
+    valueType: undefined,
+    units: undefined,
+    outDir: undefined,
+
+    cleanup: true,
+    containerLoc: null,
+    valueName: "sitevalue",
+    metaName: "sitemeta",
+    nodata: "NA",
+    
+    retryLimit: 3,
+    faultLimit: -1,
+
+    docLimit: -1,
+    metaLimit: -1,
+    valueLimit: -1,
+    valueLimitI: -1,
+    rowLimit: -1,
+
+    notificationInterval: -1
+}
+
+
+
+let helpString = "Available arguments:\n"
++ "-f, --datafile: Required. CSV file containing the site metadata and values.\n"
++ "-d, --dataset: Required. Identifier for dataset being ingested.\n"
++ "-v, --valuetype: Required. Type of the values in this dataset (e.g. rainfall, average temperature).\n"
++ "-u, --units: Required. Units values are represented in.\n"
++ "-o, --output_directory: Required. Directory to write JSON documents and other output.\n"
++ "-nc, --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
++ "-l, --document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
++ "-rl, --retry_limit: Optional. Limit the number of times to retry a document ingestion on failure before counting it as a fault. Negative value indicates no limit. Default value 3.\n"
++ "-fl, --fault_limit: Optional. Limit the number of metadata ingestion faults before failing. Negative value indicates no limit. Default value -1.\n"
++ "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image. Note that faults may not be properly detected when using agave containerization.\n"
++ "-vn, --valuename: Optional. Name to assign to value documents. Default value 'sitevalue'\n"
++ "-mn, --metadataname: Optional. Name to assign to metadata documents. Default value 'sitemeta'\n"
++ "-nd, --nodata: Optional. No data value. Cells with this value will be ignored and no document will be produced. Default value 'NA'.\n"
++ "-ml, --metadatalimit: Optional. Maximum number of metadata documents to stream. Negative value indicates no limit. Default value -1.\n"
++ "-vl, --valuelimit: Optional. Maximum number of value documents to stream. Negative value indicates no limit. Default value -1.\n"
++ "-vli, --valuelimitindividual: Optional. Maximum number of value documents to stream for each row. Negative value indicates no limit. Default value -1.\n"
++ "-rl, --rowlimit: Optional. Maximum number of rows to process. Negative value indicates no limit. Default value -1.\n"
++ "-i, --notification_interval: Optional. Print a notification to stdout after this many documents. Negative value indicates never print notification. Default value -1\n"
++ "-h, --help: Show this message.\n"
+
+function invalidArgs() {
+    console.error(helpString);
+    process.exit(2);
+}
+
+function helpAndTerminate() {
+    console.log(helpString);
+    process.exit(0);
+}
+
+let args = process.argv.slice(2);
+
+for(let i = 0; i < args.length; i++) {
+    switch(args[i]) {
+        case "-f":
+        case "--datafile": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.dataFile = value;
+            break;
+        }
+        case "-d":
+        case "--dataset": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.dataset = value;
+            break;
+        }
+        case "-v":
+        case "--valuetype": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.valueType = value;
+            break;
+        }
+        case "-u":
+        case "--units": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.units = value;
+            break;
+        }
+        case "-vn":
+        case "--valuename": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.valueName = value;
+            break;
+        }
+        case "-mn":
+        case "--metadataname": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.metaName = value;
+            break;
+        }
+        case "-nd":
+        case "--nodata": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.nodata = value;
+            break;
+        }
+        case "-ml":
+        case "--metadatalimit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            let valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.metaLimit = valuei;
+            }
+            break;
+        }
+        case "-vl":
+        case "--valuelimit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            let valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.valueLimit = valuei;
+            }
+            break;
+        }
+        case "-vli":
+        case "--valuelimitindividual": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            let valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.valueLimitI = valuei;
+            }
+            break;
+        }
+        case "-rl":
+        case "--rowlimit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            let valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.rowLimit = valuei;
+            }
+            break;
+        }
+
+        case "-o":
+        case "-output_directory": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.outDir = value;
+            break;
+        }
+        case "-nc":
+        case "--no_cleanup": {
+            options.cleanup = false;
+            break;
+        }
+        case "-l":
+        case "--document_limit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.docLimit = valuei;
+            }
+            break;
+        }
+        case "-fl":
+        case "--fault_limit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.faultLimit = valuei;
+            }
+            break;
+        }
+        case "-rl":
+        case "--retry_limit": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.retryLimit = valuei;
+            }
+            break;
+        }
+        case "-c":
+        case "--containerized": {
+            //get next arg, ensure not out of range
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            options.containerLoc = value;
+            break;
+        }
+        case "-i":
+        case "--notification_interval": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            valuei = parseInt(value);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.notificationInterval = valuei;
+            }
+            break;
+        }
+        case "-h":
+        case "--help": {
+            helpAndTerminate();
+            break;
+        }
+        default: {
+            invalidArgs();
+        }
+    }
+}
+
+
+
+if(options.dataFile === undefined || options.dataset === undefined || options.valueType === undefined || options.units === undefined || options.outDir === undefined) {
+    invalidArgs()
+}
+
+
+//convert negative limits to infinity for easier comparisons
+if(options.faultLimit < 0) {
+    options.faultLimit = Number.POSITIVE_INFINITY;
+}
+if(options.docLimit < 0) {
+    options.docLimit = Number.POSITIVE_INFINITY;
+}
+if(options.notificationInterval < 0) {
+    options.notificationInterval = Number.POSITIVE_INFINITY;
+}
+if(options.retryLimit < 0) {
+    options.retryLimit = Number.POSITIVE_INFINITY;
+}
+if(options.metaLimit < 0) {
+    options.metaLimit = Number.POSITIVE_INFINITY;
+}
+if(options.valueLimit < 0) {
+    options.valueLimit = Number.POSITIVE_INFINITY;
+}
+if(options.valueLimitI < 0) {
+    options.valueLimitI = Number.POSITIVE_INFINITY;
+}
+if(options.rowLimit < 0) {
+    options.rowLimit = Number.POSITIVE_INFINITY;
+}
+
+
+
+
+//-------------main--------------------
+
+//set up counters
+let metaDocsProcessed = 0;
+let valueDocsProcessed = 0;
+let rowsProcessed = 0;
+
+
+//use headers: false to create custom separation based on index
+source = fs.createReadStream(options.dataFile)
+.pipe(csv({
+    headers: false
+}));
+
+let isHeader = true;
+let translation = null;
+source.on("data", (row) => {
+    //first row is header
+    if(isHeader) {
+        translation = createTranslation(row);
+        isHeader = false;
+    }
+    else {
+        processRow(row, translation);
+    }
+    
+});
+
+
+
+
+//---------------------------data handling/processing-----------------------------------
+
+function createTranslation(header) {
+    translationmap = {
+        meta: {},
+        values: {}
+    };
+    
+    let dateRegex = new RegExp(schemaTrans.date);
+    let sknExists = false;
+    for(let index in header) {
+        field = header[index];
+        let translation = schemaTrans.meta[field];
+        if(translation) {
+            translationmap.meta[index] = translation
+            if(translation = "skn") {
+                sknExists = true;
+            }
+        }
+        else if(dateRegex.test(key)) {
+            //parse date to ISO
+            translation = dateParser(key);
+            translations.values[index] = translation;
+        }
+        else {
+            warning(`Warning: No translation found for header ${field}`);
+        }
+    }
+
+    if(!sknExists) {
+        parseError(`No header translation for "skn" found. Terminating ingestor.`);
+    }
+    return translationmap;
+}
+
+
+function processRow(row, translation) {
+    row++;
+
+    let metaDoc = schema.getMetaTemplate();
+
+    for(let index in translation.meta) {
+        let translation = translation.meta[index];
+        let value = row[index];
+        metaDoc.setProperty(translation, value);
+    }
+
+    metaDoc.setProperty("dataset", options.dataset);
+
+    let skn = metaDoc.getProperty("skn");
+    //at least verify skn not no data or empty string
+    if(skn == options.nodata || skn == "") {
+        warning("Invalid skn, skipping row...");
+        return;
+    }
+
+    let wrappedMetaDoc = {
+        name: options.metaName,
+        value: metaDoc.toJSON()
+    };
+
+    let metaDocName = getDocName();
+    ingestor.dataHandler(metaDocName, wrappedMetaDoc).then((error) => {
+        if(error) {
+            warning(`Failed to cleanup file ${metaDocName}\n${error.toString()}`);
+        }
+        ingestionFinished(row, "meta");
+    }, (error) => {
+        ingestionError(error);
+    });
+
+    for(let index in translation.values) {
+        let value = row[index];
+
+        if(value == options.nodata) {
+            continue;
+        }
+
+        valuef = parseFloat(value);
+
+        if(Number.isNaN(valuef)) {
+            warning(`Value at row ${row}, column ${index} not 'no data' or parseable as float. Skipping...`);
+            continue;
+        }
+
+        date = translation.values[index];
+
+        let valueDoc = schema.getValueTemplate();
+        
+        valueDoc.setProperty("skn", skn)
+        valueDoc.setProperty("date", date)
+        valueDoc.setProperty("value", valuef)
+        valueDoc.setProperty("dataset", options.dataset)
+        valueDoc.setProperty("type", options.valueType)
+        valueDoc.setProperty("units", options.units)
+
+        let wrappedValueDoc = {
+            name: options.metaName,
+            value: valueDoc.toJSON()
+        };
+
+        let valueDocName = getDocName();
+        ingestor.dataHandler(valueDocName, wrappedValueDoc).then((error) => {
+            if(error) {
+                warning(`Failed to cleanup file ${valueDocName}\n${error.toString()}`);
+            }
+            ingestionFinished(row, "meta");
+        }, (error) => {
+            ingestionError(error);
+        });
+    }
+    
+}
+
+
+//--------------------------error/warning handling---------------------------------------
+
+function errorExit(e) {
+    console.error(e);
+    cleanup();
+    process.exit(1);
+}
+
+//-----------------------cleanup------------------------------
+
+function cleanup() {
+    //ends stream and releases resources
+    source.destroy();
+}
+
+
 
 
 module.exports = class SiteControllerModule extends GenericModule {
     
     constructor(options) {
-        let defaultOpts = {
-            dataFile: undefined,
-            dataset: undefined,
-            valueType: undefined,
-            units: undefined,
-            valueName: "site_value",
-            metaName: "site_meta",
-            nodata: "NA",
-            metaLimit: -1,
-            valueLimit: -1,
-            valueLimitIndividual: -1,
-            rowLimit: -1
+
+        paused = false;
+        metaKeys = [];
+        valueKeys = [];
+        metaDocsProcessed = 0;
+        valueDocsProcessed = 0;
+        rowsProcessed = 0;
+        destroyed = false;
+
+        
+    }
+
+    row = 0;
+    processRow(row, translation) {
+        row++;
+
+        let metaDoc = schema.getMetaTemplate();
+
+        for(let index in translation.meta) {
+            let translation = translation.meta[index];
+            let value = row[index];
+            metaDoc.setProperty(translation, value);
+        }
+
+        metaDoc.setProperty("dataset", options.dataset);
+
+        let skn = metaDoc.getProperty("skn");
+        //at least verify skn not no data or empty string
+        if(skn == options.nodata || skn == "") {
+            warning("Invalid skn, skipping row...");
+            return;
+        }
+
+        let wrappedMetaDoc = {
+            name: options.metaName,
+            value: metaDoc.toJSON()
         };
-        //check options and set default values
-        for(let item in defaultOpts) {
-            let value = defaultOpts[item];
-            if(options[item] === undefined) {
-                //no default, option is required
-                if(value === undefined) {
-                    throw new Error(`Invalid options, ${item} not defined`);
+
+        let metaDocName = getDocName();
+        ingestor.dataHandler(metaDocName, wrappedMetaDoc).then((error) => {
+            if(error) {
+                warning(`Failed to cleanup file ${metaDocName}\n${error.toString()}`);
+            }
+            ingestionFinished(row, "meta");
+        }, (error) => {
+            ingestionError(error);
+        });
+
+        for(let index in translation.values) {
+            let value = row[index];
+
+            if(value == options.nodata) {
+                continue;
+            }
+
+            valuef = parseFloat(value);
+
+            if(Number.isNaN(valuef)) {
+                warning(`Value at row ${row}, column ${index} not 'no data' or parseable as float. Skipping...`);
+                continue;
+            }
+
+            date = translation.values[index];
+
+            let valueDoc = schema.getValueTemplate();
+            
+            valueDoc.setProperty("skn", skn)
+            valueDoc.setProperty("date", date)
+            valueDoc.setProperty("value", valuef)
+            valueDoc.setProperty("dataset", options.dataset)
+            valueDoc.setProperty("type", options.valueType)
+            valueDoc.setProperty("units", options.units)
+
+            let wrappedValueDoc = {
+                name: options.metaName,
+                value: valueDoc.toJSON()
+            };
+    
+            let valueDocName = getDocName();
+            ingestor.dataHandler(valueDocName, wrappedValueDoc).then((error) => {
+                if(error) {
+                    warning(`Failed to cleanup file ${valueDocName}\n${error.toString()}`);
                 }
-                //set default
-                else {
-                    options[item] = value;
+                ingestionFinished(row, "meta");
+            }, (error) => {
+                ingestionError(error);
+            });
+        }
+        
+    }
+
+    ingestionFinished(row, doc) {
+        source.emit("dataingested", );
+    }
+
+    //need to add in base path
+    docID = 0;
+    getDocName() {
+        return `doc${docID++}.json`;
+    }
+
+
+    dateParser(date) {
+        //remove x at beginning
+        let sd = date.slice(1);
+        //let's manually convert to iso string so we don't have to worry about js date potentially adding a timezone offset
+        let isoDate = sd.replace(/\./g, "-") + "T00:00:00.000Z";
+        return isoDate;
+    }
+
+
+    warning(warning) {
+        source.emit("warning", warning);
+    }
+
+    error(error) {
+        source.emit("error", error);
+    }
+
+    parseError(error) {
+        source.emit("parseerror", error);
+        destroy();
+    }
+
+    ingestionError(error) {
+        source.emit("ingestionerror", error);
+    }
+
+    createTranslation(header) {
+        translationmap = {
+            meta: {},
+            values: {}
+        };
+        
+        let dateRegex = new RegExp(schemaTrans.date);
+        let sknExists = false;
+        for(let index in header) {
+            field = header[index];
+            let translation = schemaTrans.meta[field];
+            if(translation) {
+                translationmap.meta[index] = translation
+                if(translation = "skn") {
+                    sknExists = true;
                 }
+            }
+            else if(dateRegex.test(key)) {
+                //parse date to ISO
+                translation = dateParser(key);
+                translations.values[index] = translation;
+            }
+            else {
+                warning(`Warning: No translation found for header ${field}`);
             }
         }
 
-        //convert limits less than zero to infinite
-        if(options.metaLimit < 0) {
-            options.metaLimit = Number.POSITIVE_INFINITY;
+        if(!sknExists) {
+            parseError(`No header translation for "skn" found. Terminating ingestor.`);
         }
-        if(options.valueLimit < 0) {
-            options.valueLimit = Number.POSITIVE_INFINITY;
-        }
-        if(options.valueLimitIndividual < 0) {
-            options.valueLimitIndividual = Number.POSITIVE_INFINITY;
-        }
-        if(options.rowLimit < 0) {
-            options.rowLimit = Number.POSITIVE_INFINITY;
-        }
-
-        let source = new EventEmitter();
-        super(source, options);
-
-        this.paused = false;
-        this._metaKeys = [];
-        this._valueKeys = [];
-        this._metaDocsProcessed = 0;
-        this._valueDocsProcessed = 0;
-        this._rowsProcessed = 0;
-        this.destroyed = false;
-
-        this._csvSource = fs.createReadStream(this._options.dataFile);
-        this._pipeline = chain([
-            this._csvSource,
-            parser(),
-            asObjects(),
-            //this._transformKeys.bind(this),
-            streamValues(),
-            this._stripValue.bind(this),
-            this._convertToDocs.bind(this)
-        ]);
-
-        this._pipeline.on("data", (data) => {
-            source.emit("data", data);
-        });
-        this._pipeline.on("error", (e) => {
-            source.emit("error", `Error on pipeline\n${e}`);
-        });
-        this._pipeline.on("close", () => {
-            this._source.emit("close");
-        });
-        this._pipeline.on("finish", () => {
-            this._source.emit("finish");
-        });
+        return translationmap;
     }
 
-    _stripValue(data) {
-        return data.value;
-    }
-
-    //wrap the documents with their type (meta or value)
-    _wrapDocument(type, value) {
-        let wrapped = {
-            type: type,
-            value: value
-        };
-        return wrapped;
-    }
 
     
-    _endStream() {
+    finish() {
+        source.emit("close");
         //emit finished signal
-        this._source.emit("finish");
-        //destroy the stream to end it
-        this.destroy();
+        source.emit("finish");
     }
 
     //generator to convert data to docs, returns meta doc first, then value docs
-    * _convertToDocs(data) {
+    * convertToDocs(data) {
         //exceeded limit, complete stream
-        if(this._rowsProcessed >= this._options.rowLimit || (this._metaDocsProcessed >= this._options.metaLimit && this._valueDocsProcessed >= this._options.valueLimit)) {
-            this._endStream();
+        if(rowsProcessed >= options.rowLimit || (metaDocsProcessed >= options.metaLimit && valueDocsProcessed >= options.valueLimit)) {
+            endStream();
             return null;
         }
 
         let individualValueDocsProcessed = 0;
 
-        let translations = this._translateKeys(Object.keys(data));
+        let translations = translateKeys(Object.keys(data));
 
         //construct and yield metadata doc
         let metaDoc = schema.getMetaTemplate();
@@ -140,14 +690,14 @@ module.exports = class SiteControllerModule extends GenericModule {
         }
 
         //if hit metadoc limit then don't complete and send off metadata doc
-        if(this._metaDocsProcessed < this._options.metaLimit) {
+        if(metaDocsProcessed < options.metaLimit) {
             //set dataset
-            metaDoc.setProperty("dataset", this._options.dataset);
+            metaDoc.setProperty("dataset", options.dataset);
             let wrappedMeta = {
-                name: this._options.metaName,
+                name: options.metaName,
                 value: metaDoc.toJSON()
             };
-            this._metaDocsProcessed++;
+            metaDocsProcessed++;
             //send off metadata doc
             yield wrappedMeta;
         }
@@ -155,34 +705,34 @@ module.exports = class SiteControllerModule extends GenericModule {
         //construct and yield value docs
         let valueTranslations = translations.value;
         for(let key in valueTranslations) {
-            if(this._valueDocsProcessed >= this._options.valueLimit || individualValueDocsProcessed >= this._options.valueLimitIndividual) {
+            if(valueDocsProcessed >= options.valueLimit || individualValueDocsProcessed >= options.valueLimitIndividual) {
                 break;
             }
             let date = valueTranslations[key];
             let value = data[key];
-            let wrappedValue = this._constructAndWrapValueDoc(skn, date, value);
+            let wrappedValue = constructAndWrapValueDoc(skn, date, value);
             if(wrappedValue !== null) {
-                this._valueDocsProcessed++;
+                valueDocsProcessed++;
                 individualValueDocsProcessed++;
                 //send out value doc
                 yield wrappedValue;
             }
         }
-        this._rowsProcessed++;
+        rowsProcessed++;
     }
 
 
 
-    _constructAndWrapValueDoc(skn, date, value) {
+    constructAndWrapValueDoc(skn, date, value) {
         let valueDoc = schema.getValueTemplate();
         let wrappedValue = null;
         //if nodata then return null (should be ignored)
-        if(value != this._options.nodata) {
+        if(value != options.nodata) {
             //value should be numeric
             let valuef = parseFloat(value);
             //value not numeric, send warning and skip
             if(Number.isNaN(valuef)) {
-                this._source.emit("warning", `Value not 'no data' or parseable as float. Skipping...`);
+                source.emit("warning", `Value not 'no data' or parseable as float. Skipping...`);
             }
             else {
                 //gather value fields
@@ -190,20 +740,20 @@ module.exports = class SiteControllerModule extends GenericModule {
                     skn: skn,
                     date: date,
                     value: valuef,
-                    dataset: this._options.dataset,
-                    type: this._options.valueType,
-                    units: this._options.units
+                    dataset: options.dataset,
+                    type: options.valueType,
+                    units: options.units
                 }
                 //set values in doc
                 for(let field in valueFields) {
                     let docValue = valueFields[field];
                     if(!valueDoc.setProperty(field, docValue)) {
                         //emit warning to source if could not set value in doc
-                        this._source.emit("warning", `Could not set property ${label}, not found in template.`);
+                        source.emit("warning", `Could not set property ${label}, not found in template.`);
                     }
                 }
                 wrappedValue = {
-                    name: this._options.valueName,
+                    name: options.valueName,
                     value: valueDoc.toJSON()
                 };
             }
@@ -213,15 +763,9 @@ module.exports = class SiteControllerModule extends GenericModule {
     }
 
 
-    _dateParser(date) {
-        //remove x at beginning
-        let sd = date.slice(1);
-        //let's manually convert to iso string so we don't have to worry about js date potentially adding a timezone offset
-        let isoDate = sd.replace(/\./g, "-") + "T00:00:00.000Z";
-        return isoDate;
-    }
+   
 
-    _translateKeys(keys) {
+    translateKeys(keys) {
         let translations = {
             meta: {},
             value: {}
@@ -235,223 +779,44 @@ module.exports = class SiteControllerModule extends GenericModule {
             }
             else if(dateRegex.test(key)) {
                 //parse date to ISO
-                translation = this._dateParser(key);
+                translation = dateParser(key);
                 translations.value[key] = translation;
             }
             else {
-                this._source.emit("warning", `No translation for key ${key}, check schema.`);
+                source.emit("warning", `No translation for key ${key}, check schema.`);
             }
         }
 
         return translations;
     }
 
-    _test(data) {
-        console.log(data);
-        process.exit(0);
-    }
 
-
-    pause() {
-        //pause data source and pipeline if not already paused
-        if(!this.paused && !this.destroyed) {
-            this.paused = true;
-            this._csvSource.pause();
-            this._pipeline.pause();
-        }
+    // pause() {
+    //     //pause data source and pipeline if not already paused
+    //     if(!paused && !destroyed) {
+    //         paused = true;
+    //         csvSource.pause();
+    //         pipeline.pause();
+    //     }
         
-    }
+    // }
 
-    resume() {
-        //resume everything if paused
-        if(this.paused && !this.destroyed) {
-            this.paused = false;
-            this._csvSource.resume();
-            this._pipeline.resume();
-        }
-    }
+    // resume() {
+    //     //resume everything if paused
+    //     if(paused && !destroyed) {
+    //         paused = false;
+    //         csvSource.resume();
+    //         pipeline.resume();
+    //     }
+    // }
 
     //emit close event
     destroy() {
-        this.destroyed = true;
-        this._pipeline.destroy();
-        this._csvSource.destroy();
-    }
+        source.destroy();
+        destroyed = true;
 
-    //specifies how to parse command line arguments to option, returns key value pair as array of length 2, a help message if help flag, or null if invalid
-    static parseArgs(args) {
-
-        let helpMessage = "Available arguments:\n"
-        + "-f, --data_file: Required. CSV file containing the site metadata and values.\n"
-        + "-d, --dataset: Required. Identifier for dataset being ingested.\n"
-        + "-v, --value_type: Required. Type of the values in this dataset (e.g. rainfall, average temperature).\n"
-        + "-u, --units: Required. Units values are represented in.\n"
-        + "-vn, --value_name: Optional. Name to assign to value documents. Default value 'site_value'\n"
-        + "-mn, --metadata_name: Optional. Name to assign to metadata documents. Default value 'site_meta'\n"
-        + "-nd, --nodata: Optional. No data value. Cells with this value will be ignored and no document will be produced. Default value 'NA'.\n"
-        + "-ml, --metadata_limit: Optional. Maximum number of metadata documents to stream. Negative value indicates no limit. Default value -1.\n"
-        + "-vl, --value_limit: Optional. Maximum number of value documents to stream. Negative value indicates no limit. Default value -1.\n"
-        + "-vli, --value_limit_individual: Optional. Maximum number of value documents to stream for each row. Negative value indicates no limit. Default value -1.\n"
-        + "-rl, --row_limit: Optional. Maximum number of rows to process. Negative value indicates no limit. Default value -1.\n"
-        + "-h, --help: Show this message.\n"
-
-
-
-        let result = {
-            success: true,
-            result: {}
-        };
-
-        let setHelp = (error) => {
-            if(error) {
-                result.success = false;
-            }
-            result.result = helpMessage;
-        }
-
-        argLoop:
-        for(let i = 0; i < args.length; i++) {
-            switch(args[i]) {
-                case "-f":
-                case "--data_file": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.dataFile = args[i];
-                    break;
-                }
-                case "-d":
-                case "--dataset": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.dataset = args[i];
-                    break;
-                }
-                case "-v":
-                case "--value_type": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.valueType = args[i];
-                    break;
-                }
-                case "-u":
-                case "--units": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.units = args[i];
-                    break;
-                }
-                case "-vn":
-                case "--value_name": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.valueName = args[i];
-                    break;
-                }
-                case "-mn":
-                case "--metadata_name": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.metaName = args[i];
-                    break;
-                }
-                case "-nd":
-                case "--nodata": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    result.result.nodata = args[i];
-                    break;
-                }
-                case "-ml":
-                case "--metadata_limit": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    let valuei = parseInt(value);
-                    if(isNaN(valuei)) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    else {
-                        result.result.metaLimit = args[i];
-                    }
-                    break;
-                }
-                case "-vl":
-                case "--value_limit": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    let valuei = parseInt(value);
-                    if(isNaN(valuei)) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    else {
-                        result.result.valueLimit = args[i];
-                    }
-                    break;
-                }
-                case "-vli":
-                case "--value_limit_individual": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    let valuei = parseInt(value);
-                    if(isNaN(valuei)) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    else {
-                        result.result.valueLimitIndividual = args[i];
-                    }
-                    break;
-                }
-                case "-rl":
-                case "--row_limit": {
-                    if(++i >= args.length) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    let valuei = parseInt(value);
-                    if(isNaN(valuei)) {
-                        setHelp(true);
-                        break argLoop;
-                    }
-                    else {
-                        result.result.rowLimit = args[i];
-                    }
-                    break;
-                }
-                case "-h":
-                case "--help": {
-                    setHelp(false);
-                    break argLoop;
-                }
-                default: {
-                    setHelp(true);
-                    break argLoop;
-                }
-            }
-        }
-
-        return result;
     }
 
 }
+
+

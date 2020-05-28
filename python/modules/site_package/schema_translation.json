@@ -1,0 +1,57 @@
+{
+    "meta": {
+        "SKN": {
+            "translation": "skn",
+            "type": "string"
+        },
+        "Station.Name": {
+            "translation": "name",
+            "type": "string"
+        },
+        "OBSERVER": {
+            "translation": "observer",
+            "type": "string"
+        },
+        "Network": {
+            "translation": "network",
+            "type": "string"
+        },
+        "Island": {
+            "translation": "island",
+            "type": "string"
+        },
+        "ELEV.m.": {
+            "translation": "elevation_m",
+            "type": "float"
+        },
+        "LAT": {
+            "translation": "lat",
+            "type": "float"
+        },
+        "LON": {
+            "translation": "lon",
+            "type": "float"
+        },
+        "NCEI.id": {
+            "translation": "ncei_id",
+            "type": "string"
+        },
+        "NWS.id": {
+            "translation": "nws_id",
+            "type": "string"
+        },
+        "NESDIS.id": {
+            "translation": "nesdis_id",
+            "type": "string"
+        },
+        "SCAN.id": {
+            "translation": "scan_id",
+            "type": "string"
+        },
+        "SMART_NODE_RF.id": {
+            "translation": "smart_node_rf_id",
+            "type": "string"
+        }
+    },
+    "date": "X[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}"
+}
