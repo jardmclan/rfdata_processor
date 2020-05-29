@@ -1,9 +1,10 @@
-const csv = require('csv-parser')
+const csv = require("csv-parser");
 const fs = require("fs");
 const {EventEmitter} = require("events");
-const schemaTrans = require("./schematranslation");
-const schema = require("./docschema");
-const ingestor = require("../../metaingestor");
+const schemaTrans = require("./schema_translation");
+const schema = require("./doc_schema");
+const ingestor = require("../../meta_ingestor");
+const path = require("path");
 
 
 //-------------parse args--------------------
@@ -43,7 +44,7 @@ let helpString = "Available arguments:\n"
 + "-o, --output_directory: Required. Directory to write JSON documents and other output.\n"
 + "-nc, --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
 + "-l, --document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
-+ "-rl, --retry_limit: Optional. Limit the number of times to retry a document ingestion on failure before counting it as a fault. Negative value indicates no limit. Default value 3.\n"
++ "-r, --retry_limit: Optional. Limit the number of times to retry a document ingestion on failure before counting it as a fault. Negative value indicates no limit. Default value 3.\n"
 + "-fl, --fault_limit: Optional. Limit the number of metadata ingestion faults before failing. Negative value indicates no limit. Default value -1.\n"
 + "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image. Note that faults may not be properly detected when using agave containerization.\n"
 + "-vn, --valuename: Optional. Name to assign to value documents. Default value 'sitevalue'\n"
@@ -238,7 +239,7 @@ for(let i = 0; i < args.length; i++) {
             }
             break;
         }
-        case "-rl":
+        case "-r":
         case "--retry_limit": {
             if(++i >= args.length) {
                 invalidArgs();
@@ -332,6 +333,13 @@ let metaDocsProcessed = 0;
 let valueDocsProcessed = 0;
 let rowsProcessed = 0;
 
+let done = false;
+let docsComplete = 0;
+
+ingestionErrors = 0;
+
+let docID = 0;
+
 
 //use headers: false to create custom separation based on index
 source = fs.createReadStream(options.dataFile)
@@ -348,18 +356,34 @@ source.on("data", (row) => {
         isHeader = false;
     }
     else {
-        processRow(row, translation);
+        if(rowsProcessed++ < options.rowLimit && (metaDocsProcessed < options.metaLimit || valueDocsProcessed < options.valueLimit) && metaDocsProcessed + valueDocsProcessed < options.docLimit) {
+            processRow(row, translation);
+        }
+        else {
+            source.destroy();
+            allSubmitted();
+        }
     }
     
 });
-
+source.on("finished", () => {
+    allSubmitted();
+});
 
 
 
 //---------------------------data handling/processing-----------------------------------
 
+function dateParser(date) {
+    //remove x at beginning
+    let sd = date.slice(1);
+    //let's manually convert to iso string so we don't have to worry about js date potentially adding a timezone offset
+    let isoDate = sd.replace(/\./g, "-") + "T00:00:00.000Z";
+    return isoDate;
+}
+
 function createTranslation(header) {
-    translationmap = {
+    translationMap = {
         meta: {},
         values: {}
     };
@@ -370,15 +394,15 @@ function createTranslation(header) {
         field = header[index];
         let translation = schemaTrans.meta[field];
         if(translation) {
-            translationmap.meta[index] = translation
+            translationMap.meta[index] = translation
             if(translation = "skn") {
                 sknExists = true;
             }
         }
-        else if(dateRegex.test(key)) {
+        else if(dateRegex.test(field)) {
             //parse date to ISO
-            translation = dateParser(key);
-            translations.values[index] = translation;
+            translation = dateParser(field);
+            translationMap.values[index] = translation;
         }
         else {
             warning(`Warning: No translation found for header ${field}`);
@@ -388,17 +412,17 @@ function createTranslation(header) {
     if(!sknExists) {
         parseError(`No header translation for "skn" found. Terminating ingestor.`);
     }
-    return translationmap;
+    return translationMap;
 }
 
 
-function processRow(row, translation) {
-    row++;
+function processRow(row, translationMap) {
+
 
     let metaDoc = schema.getMetaTemplate();
 
-    for(let index in translation.meta) {
-        let translation = translation.meta[index];
+    for(let index in translationMap.meta) {
+        let translation = translationMap.meta[index];
         let value = row[index];
         metaDoc.setProperty(translation, value);
     }
@@ -412,22 +436,26 @@ function processRow(row, translation) {
         return;
     }
 
-    let wrappedMetaDoc = {
-        name: options.metaName,
-        value: metaDoc.toJSON()
-    };
+    if(metaDocsProcessed < options.metaLimit) {
+        let wrappedMetaDoc = {
+            name: options.metaName,
+            value: metaDoc.toJSON()
+        };
+    
+        let metaDocName = getDocName();
+        ingestDoc(metaDocName, wrappedMetaDoc);
 
-    let metaDocName = getDocName();
-    ingestor.dataHandler(metaDocName, wrappedMetaDoc).then((error) => {
-        if(error) {
-            warning(`Failed to cleanup file ${metaDocName}\n${error.toString()}`);
+        metaDocsProcessed++;
+    }
+
+    
+
+    valueDocsProcessedI = 0;
+    for(let index in translationMap.values) {
+        if(valueDocsProcessed >= options.valueLimit || valueDocsProcessedI >= options.valueLimitI || metaDocsProcessed + valueDocsProcessed >= options.docLimit) {
+            break;
         }
-        ingestionFinished(row, "meta");
-    }, (error) => {
-        ingestionError(error);
-    });
 
-    for(let index in translation.values) {
         let value = row[index];
 
         if(value == options.nodata) {
@@ -441,7 +469,7 @@ function processRow(row, translation) {
             continue;
         }
 
-        date = translation.values[index];
+        date = translationMap.values[index];
 
         let valueDoc = schema.getValueTemplate();
         
@@ -458,365 +486,97 @@ function processRow(row, translation) {
         };
 
         let valueDocName = getDocName();
-        ingestor.dataHandler(valueDocName, wrappedValueDoc).then((error) => {
-            if(error) {
-                warning(`Failed to cleanup file ${valueDocName}\n${error.toString()}`);
-            }
-            ingestionFinished(row, "meta");
-        }, (error) => {
-            ingestionError(error);
-        });
+        ingestDoc(valueDocName, wrappedValueDoc);
+
+        valueDocsProcessedI++;
+        valueDocsProcessed++;
+
     }
     
 }
 
 
-//--------------------------error/warning handling---------------------------------------
-
-function errorExit(e) {
-    console.error(e);
-    cleanup();
-    process.exit(1);
+function ingestDoc(docName, doc) {
+    ingestor.dataHandler(docName, doc, options.retryLimit, options.cleanup, options.containerLoc).then((e) => {
+        if(e) {
+            warning(`Failed to cleanup file ${docName}\n${e.toString()}`);
+        }
+        docIngested();
+    }, (e) => {
+        error(e);
+        if(ingestionErrors++ >= options.faultLimit) {
+            errorExit(`Fault limit reached.`);
+        }
+    });
 }
 
-//-----------------------cleanup------------------------------
+
+function getDocName() {
+    dir = options.outDir;
+    fname = `doc_${docID}.json`;
+    fpath = path.join(dir, fname);
+    docID++;
+    return fpath;
+}
+
+
+
+//--------------------------error/warning handling---------------------------------------
+
+function warning(warning) {
+    console.log(`Warning from controller:\n${warning.toString()}`);
+}
+
+function error(e) {
+    console.error(`Error from controller:\n${e.toString()}`);
+}
+
+function errorExit(e) {
+    console.error(`Critical error in controller. The process will exit.\n${e.toString()}`);
+    cleanup();
+    exit(1);
+}
+
+//-----------------------cleanup and output aux------------------------------
+
+function exit(code = 0) {
+    process.exit(code);
+}
 
 function cleanup() {
     //ends stream and releases resources
     source.destroy();
 }
 
-
-
-
-module.exports = class SiteControllerModule extends GenericModule {
-    
-    constructor(options) {
-
-        paused = false;
-        metaKeys = [];
-        valueKeys = [];
-        metaDocsProcessed = 0;
-        valueDocsProcessed = 0;
-        rowsProcessed = 0;
-        destroyed = false;
-
-        
-    }
-
-    row = 0;
-    processRow(row, translation) {
-        row++;
-
-        let metaDoc = schema.getMetaTemplate();
-
-        for(let index in translation.meta) {
-            let translation = translation.meta[index];
-            let value = row[index];
-            metaDoc.setProperty(translation, value);
-        }
-
-        metaDoc.setProperty("dataset", options.dataset);
-
-        let skn = metaDoc.getProperty("skn");
-        //at least verify skn not no data or empty string
-        if(skn == options.nodata || skn == "") {
-            warning("Invalid skn, skipping row...");
-            return;
-        }
-
-        let wrappedMetaDoc = {
-            name: options.metaName,
-            value: metaDoc.toJSON()
-        };
-
-        let metaDocName = getDocName();
-        ingestor.dataHandler(metaDocName, wrappedMetaDoc).then((error) => {
-            if(error) {
-                warning(`Failed to cleanup file ${metaDocName}\n${error.toString()}`);
-            }
-            ingestionFinished(row, "meta");
-        }, (error) => {
-            ingestionError(error);
-        });
-
-        for(let index in translation.values) {
-            let value = row[index];
-
-            if(value == options.nodata) {
-                continue;
-            }
-
-            valuef = parseFloat(value);
-
-            if(Number.isNaN(valuef)) {
-                warning(`Value at row ${row}, column ${index} not 'no data' or parseable as float. Skipping...`);
-                continue;
-            }
-
-            date = translation.values[index];
-
-            let valueDoc = schema.getValueTemplate();
-            
-            valueDoc.setProperty("skn", skn)
-            valueDoc.setProperty("date", date)
-            valueDoc.setProperty("value", valuef)
-            valueDoc.setProperty("dataset", options.dataset)
-            valueDoc.setProperty("type", options.valueType)
-            valueDoc.setProperty("units", options.units)
-
-            let wrappedValueDoc = {
-                name: options.metaName,
-                value: valueDoc.toJSON()
-            };
-    
-            let valueDocName = getDocName();
-            ingestor.dataHandler(valueDocName, wrappedValueDoc).then((error) => {
-                if(error) {
-                    warning(`Failed to cleanup file ${valueDocName}\n${error.toString()}`);
-                }
-                ingestionFinished(row, "meta");
-            }, (error) => {
-                ingestionError(error);
-            });
-        }
-        
-    }
-
-    ingestionFinished(row, doc) {
-        source.emit("dataingested", );
-    }
-
-    //need to add in base path
-    docID = 0;
-    getDocName() {
-        return `doc${docID++}.json`;
-    }
-
-
-    dateParser(date) {
-        //remove x at beginning
-        let sd = date.slice(1);
-        //let's manually convert to iso string so we don't have to worry about js date potentially adding a timezone offset
-        let isoDate = sd.replace(/\./g, "-") + "T00:00:00.000Z";
-        return isoDate;
-    }
-
-
-    warning(warning) {
-        source.emit("warning", warning);
-    }
-
-    error(error) {
-        source.emit("error", error);
-    }
-
-    parseError(error) {
-        source.emit("parseerror", error);
-        destroy();
-    }
-
-    ingestionError(error) {
-        source.emit("ingestionerror", error);
-    }
-
-    createTranslation(header) {
-        translationmap = {
-            meta: {},
-            values: {}
-        };
-        
-        let dateRegex = new RegExp(schemaTrans.date);
-        let sknExists = false;
-        for(let index in header) {
-            field = header[index];
-            let translation = schemaTrans.meta[field];
-            if(translation) {
-                translationmap.meta[index] = translation
-                if(translation = "skn") {
-                    sknExists = true;
-                }
-            }
-            else if(dateRegex.test(key)) {
-                //parse date to ISO
-                translation = dateParser(key);
-                translations.values[index] = translation;
-            }
-            else {
-                warning(`Warning: No translation found for header ${field}`);
-            }
-        }
-
-        if(!sknExists) {
-            parseError(`No header translation for "skn" found. Terminating ingestor.`);
-        }
-        return translationmap;
-    }
-
-
-    
-    finish() {
-        source.emit("close");
-        //emit finished signal
-        source.emit("finish");
-    }
-
-    //generator to convert data to docs, returns meta doc first, then value docs
-    * convertToDocs(data) {
-        //exceeded limit, complete stream
-        if(rowsProcessed >= options.rowLimit || (metaDocsProcessed >= options.metaLimit && valueDocsProcessed >= options.valueLimit)) {
-            endStream();
-            return null;
-        }
-
-        let individualValueDocsProcessed = 0;
-
-        let translations = translateKeys(Object.keys(data));
-
-        //construct and yield metadata doc
-        let metaDoc = schema.getMetaTemplate();
-        let metaTranslations = translations.meta;
-        for(let key in metaTranslations) {
-            let translation = metaTranslations[key];
-            let value = data[key];
-            metaDoc.setProperty(translation, value);
-        }
-
-        //need skn for ref in value docs
-        let skn = metaDoc.getProperty("skn");
-        //at least verify skn exists
-        if(skn == undefined || skn == null) {
-            throw new Error("SKN not found");
-        }
-
-        //if hit metadoc limit then don't complete and send off metadata doc
-        if(metaDocsProcessed < options.metaLimit) {
-            //set dataset
-            metaDoc.setProperty("dataset", options.dataset);
-            let wrappedMeta = {
-                name: options.metaName,
-                value: metaDoc.toJSON()
-            };
-            metaDocsProcessed++;
-            //send off metadata doc
-            yield wrappedMeta;
-        }
-
-        //construct and yield value docs
-        let valueTranslations = translations.value;
-        for(let key in valueTranslations) {
-            if(valueDocsProcessed >= options.valueLimit || individualValueDocsProcessed >= options.valueLimitIndividual) {
-                break;
-            }
-            let date = valueTranslations[key];
-            let value = data[key];
-            let wrappedValue = constructAndWrapValueDoc(skn, date, value);
-            if(wrappedValue !== null) {
-                valueDocsProcessed++;
-                individualValueDocsProcessed++;
-                //send out value doc
-                yield wrappedValue;
-            }
-        }
-        rowsProcessed++;
-    }
-
-
-
-    constructAndWrapValueDoc(skn, date, value) {
-        let valueDoc = schema.getValueTemplate();
-        let wrappedValue = null;
-        //if nodata then return null (should be ignored)
-        if(value != options.nodata) {
-            //value should be numeric
-            let valuef = parseFloat(value);
-            //value not numeric, send warning and skip
-            if(Number.isNaN(valuef)) {
-                source.emit("warning", `Value not 'no data' or parseable as float. Skipping...`);
-            }
-            else {
-                //gather value fields
-                let valueFields = {
-                    skn: skn,
-                    date: date,
-                    value: valuef,
-                    dataset: options.dataset,
-                    type: options.valueType,
-                    units: options.units
-                }
-                //set values in doc
-                for(let field in valueFields) {
-                    let docValue = valueFields[field];
-                    if(!valueDoc.setProperty(field, docValue)) {
-                        //emit warning to source if could not set value in doc
-                        source.emit("warning", `Could not set property ${label}, not found in template.`);
-                    }
-                }
-                wrappedValue = {
-                    name: options.valueName,
-                    value: valueDoc.toJSON()
-                };
-            }
-        }
-        //send out value doc
-        return wrappedValue;
-    }
-
-
-   
-
-    translateKeys(keys) {
-        let translations = {
-            meta: {},
-            value: {}
-        }
-        let dateRegex = new RegExp(schemaTrans.date);
-        
-        for(let key of keys) {
-            let translation = schemaTrans.meta[key];
-            if(translation !== undefined) {
-                translations.meta[key] = translation;
-            }
-            else if(dateRegex.test(key)) {
-                //parse date to ISO
-                translation = dateParser(key);
-                translations.value[key] = translation;
-            }
-            else {
-                source.emit("warning", `No translation for key ${key}, check schema.`);
-            }
-        }
-
-        return translations;
-    }
-
-
-    // pause() {
-    //     //pause data source and pipeline if not already paused
-    //     if(!paused && !destroyed) {
-    //         paused = true;
-    //         csvSource.pause();
-    //         pipeline.pause();
-    //     }
-        
-    // }
-
-    // resume() {
-    //     //resume everything if paused
-    //     if(paused && !destroyed) {
-    //         paused = false;
-    //         csvSource.resume();
-    //         pipeline.resume();
-    //     }
-    // }
-
-    //emit close event
-    destroy() {
-        source.destroy();
-        destroyed = true;
-
-    }
-
+function allSubmitted() {
+    done = true;
+    source.destroy();
 }
 
+function docIngested() {
+    docsComplete++;
+    if(docsComplete % options.notificationInterval == 0) {
+        console.log(`Completed ingesting ${docsComplete} docs.`);
+    }
+    if(done && docsComplete >= metaDocsProcessed + valueDocsProcessed) {
+        ingestionComplete();
+    }
+}
+
+function ingestionComplete() {
+    console.log("Complete!");
+    exit();
+}
+
+
+
+process.on("SIGINT", function() {
+    console.log("Caught interrupt, exitting...");
+    cleanup();
+    exit();
+});
+
+process.on("uncaughtException", (e) => {
+    errorExit(e);
+});
 
