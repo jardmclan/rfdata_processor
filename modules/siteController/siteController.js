@@ -6,6 +6,7 @@ const schema = require("./doc_schema");
 const ingestor = require("../../meta_ingestor");
 const path = require("path");
 
+//node siteController.js -f ./input/daily_rf_data_2019_11_27.csv -d test -v rainfall -u mm -o ../../output -l 1
 
 //-------------parse args--------------------
 
@@ -23,7 +24,7 @@ let options = {
     nodata: "NA",
     
     retryLimit: 3,
-    faultLimit: -1,
+    faultLimit: 0,
 
     docLimit: -1,
     metaLimit: -1,
@@ -45,7 +46,7 @@ let helpString = "Available arguments:\n"
 + "-nc, --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
 + "-l, --document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
 + "-r, --retry_limit: Optional. Limit the number of times to retry a document ingestion on failure before counting it as a fault. Negative value indicates no limit. Default value 3.\n"
-+ "-fl, --fault_limit: Optional. Limit the number of metadata ingestion faults before failing. Negative value indicates no limit. Default value -1.\n"
++ "-fl, --fault_limit: Optional. Limit the allowable number of metadata ingestion faults before failing. Negative value indicates no limit. Default value 0.\n"
 + "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image. Note that faults may not be properly detected when using agave containerization.\n"
 + "-vn, --valuename: Optional. Name to assign to value documents. Default value 'sitevalue'\n"
 + "-mn, --metadataname: Optional. Name to assign to metadata documents. Default value 'sitemeta'\n"
@@ -451,22 +452,26 @@ function processRow(row, translationMap) {
     
 
     valueDocsProcessedI = 0;
-    for(let index in translationMap.values) {
+    let indices = Object.keys(translationMap.values);
+    let handleRange = [0, indices.length];
+    let chunkSize = 100;
+    chunkedLoop(handleRange[0], handleRange[1], chunkSize, (i) => {
+        let index = indices[i];
         if(valueDocsProcessed >= options.valueLimit || valueDocsProcessedI >= options.valueLimitI || metaDocsProcessed + valueDocsProcessed >= options.docLimit) {
-            break;
+            return false
         }
 
         let value = row[index];
 
         if(value == options.nodata) {
-            continue;
+            return true;
         }
 
         valuef = parseFloat(value);
 
         if(Number.isNaN(valuef)) {
             warning(`Value at row ${row}, column ${index} not 'no data' or parseable as float. Skipping...`);
-            continue;
+            return true;
         }
 
         date = translationMap.values[index];
@@ -491,6 +496,24 @@ function processRow(row, translationMap) {
         valueDocsProcessedI++;
         valueDocsProcessed++;
 
+        return true;
+    });
+    
+}
+
+function chunkedLoop(start, end, chunkSize, routine) {
+    let pos = start;
+    continueLoop = true;
+    for(let i = 0; i < chunkSize && pos < end; i++, pos++) {
+        continueLoop = routine(pos);
+        if(continueLoop) {
+            break;
+        }
+    }
+    if(pos < end && continueLoop) {
+        setImmediate(() => {
+            chunkedLoop(pos, end, chunkSize, routine);
+        });
     }
     
 }
