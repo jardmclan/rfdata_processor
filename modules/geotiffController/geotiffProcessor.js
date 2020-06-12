@@ -1,49 +1,43 @@
 const geotiff = require("geotiff");
 
-if(process.argv.length < 3) {
-    process.stderr.write("Invalid args. Requires filepath.", cb = () => {
-        process.exit(2);
-    });
-}
+// if(process.argv.length < 3) {
+//     process.stderr.write("Invalid args. Requires filepath.", cb = () => {
+//         process.exit(2);
+//     });
+// }
 
-fpath = process.argv[2];
+// fpath = process.argv[2];
 
-header = null;
-if(process.argv.length > 3) {
-    try {
-        header = JSON.parse(header);
-    }
-    catch(e) {
-        process.stderr.write(`Error parsing header\n${e}`, cb = () => {
-            process.exit(2);
-        });
-    }
+// header = null;
+// if(process.argv.length > 3) {
+//     try {
+//         header = JSON.parse(header);
+//     }
+//     catch(e) {
+//         process.stderr.write(`Error parsing header\n${e}`, cb = () => {
+//             process.exit(2);
+//         });
+//     }
     
-}
-getDataFromGeoTIFFFile(fpath, header).then((data) => {
-    //send data back to parent and exit
-    process.send(data, callback = () => {
-        process.exit(0);
-    });
-}, (e) => {
-    //write error and exit
-    process.stderr.write(`An error has occured while getting geotiff data\n${e}`, cb = () => {
-        process.exit(1);
-    });
-});
+// }
+// getDataFromGeoTIFFFile(fpath, header).then((data) => {
+//     //send data back to parent and exit
+//     process.send(data, callback = () => {
+//         process.exit(0);
+//     });
+// }, (e) => {
+//     //write error and exit
+//     process.stderr.write(`An error has occured while getting geotiff data\n${e}`, cb = () => {
+//         process.exit(1);
+//     });
+// });
+
+module.exports.getDataFromGeoTIFFFile = getDataFromGeoTIFFFile;
 
 
-function getDataFromGeoTIFFFile(fpath, validHeader = null) {
+function getDataFromGeoTIFFFile(fpath) {
     return new Promise((resolve, reject) => {
         getRasterDataFromGeoTIFFArrayBuffer(fpath, -3.3999999521443642e+38, ["0"]).then((raster) => {
-            if(validHeader != null) {
-                //compare with stored header and reject if doesnt match
-                for(let field in raster.header) {
-                    if(raster.header[field] != validHeader[field]) {
-                        return reject("Header mismatch");
-                    }
-                }
-            }
             //resolve with indexed values
             resolve({
                 header: raster.header,
