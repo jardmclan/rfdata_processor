@@ -132,44 +132,52 @@
 
 // //console.log(process.env.NODE_V8_COVERAGE);
 
-function test() {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            resolve();
-        }, 2000);
-    });
+// function test() {
+//     return new Promise((resolve, reject) => {
+//         setTimeout(() => {
+//             resolve();
+//         }, 2000);
+//     });
     
-}
-
-let a = 0;
-
-test().then(() => {
-    console.log(a);
-    process.exit();
-});
-
-// while(true) {
-//     a++;
 // }
 
-// loop();
+// let a = 0;
 
-chunkedLoop(0, Number.POSITIVE_INFINITY, 500, (i) => {
-    a++;
-});
+// test().then(() => {
+//     console.log(a);
+//     process.exit();
+// });
 
-function chunkedLoop(start, end, chunkSize, routine) {
-    let pos = start;
-    breakLoop = false;
-    for(let i = 0; i < chunkSize && pos < end; i++, pos++) {
-        routine(pos);
-    }
-    if(pos < end) {
-        setImmediate(() => {
-            chunkedLoop(pos, end, chunkSize, routine);
-        });
-    }
+// // while(true) {
+// //     a++;
+// // }
+
+// // loop();
+
+// chunkedLoop(0, Number.POSITIVE_INFINITY, 500, (i) => {
+//     a++;
+// });
+
+// function chunkedLoop(start, end, chunkSize, routine) {
+//     let pos = start;
+//     breakLoop = false;
+//     for(let i = 0; i < chunkSize && pos < end; i++, pos++) {
+//         routine(pos);
+//     }
+//     if(pos < end) {
+//         setImmediate(() => {
+//             chunkedLoop(pos, end, chunkSize, routine);
+//         });
+//     }
     
+// }
+
+n = 0
+
+test(n++, n++);
+
+function test(i, j) {
+    console.log(i, j);
 }
 
 

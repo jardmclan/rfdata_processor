@@ -3,7 +3,7 @@
 
 const {join} = require("path");
 
-
+const {fork} = require("child_process");
 
 
 const processor = join("geotiffProcessor.js");
@@ -11,7 +11,6 @@ const processor = join("geotiffProcessor.js");
 
 const os = require("os");
 const ingestor = require("../../meta_ingestor");
-const ProcessPool = require("process-pool").default;
 
 console.log(ProcessPool.Pool);
 //node geotiffcontroller.js -f ./input/index.json -r ./input/RF_Monthly_3_Yr_Sample -d test -o ../../output -l 1 -i 1
@@ -264,6 +263,104 @@ if(options.maxSpawn < 0) {
 //-------------main--------------------
 
 const index = require(options.indexFile);
+let geotiffMeta = index.index;
+let metaLen = geotiffMeta.length;
+
+
+//make sure not spawning more processes than there are values
+let procLimit = Math.min(metaLen, options.processLimit);
+
+let chunkSizeLow = Math.floor(metaLen / processLimit);
+let chunkSizeHigh = chunkSizeLow + 1;
+
+let leftover = metaLen % processLimit;
+
+let procLimitHigh = leftover;
+let procLimitLow = procLimit - procLimitHigh;
+
+//generate ranges
+let ranges = [];
+
+let s = 0;
+//ranges are [low, high)
+for(let i = 0; i < procLimitHigh; i++) {
+    ranges.push([s, s + chunkSizeHigh]);
+    s += chunkSizeHigh;
+}
+
+for(let i = 0; i < procLimitLow; i++) {
+    ranges.push([s, s + chunkSizeLow]);
+    s += chunkSizeLow;
+}
+
+//sanity check
+if(s != metaLen || ranges.length != procLimit) {
+    errorExit("Failed sanity check, index file not chunked correctly.");
+}
+
+
+//should have api process limit too, should be >= the processLimit (each process needs its own spawn allocation so no need to have interprocess coordination), print warning otherwise and change to match in arg manager
+//failure limit should be per process, change doc to reflect this, but should abort all processes on single failure
+
+//repeat chunking process for api spawn allocations
+let apiSpawnAllocLow = Math.floor(options.apiSpawnLimit / procLimit);
+let apiSpawnAllocHigh = apiSpawnAllocLow + 1;
+
+let leftover = options.apiSpawnLimit % procLimit;
+
+let apiProcLimitHigh = leftover;
+let apiProcLimitLow = procLimit - apiProcLimitHigh;
+
+
+let children = [];
+
+options.apiSpawnAlloc = apiSpawnAllocHigh;
+
+let i = 0;
+for(; i < apiProcLimitHigh; i++) {
+    options.indexRange = ranges[i];
+    //pass options as stringified json object
+    let child = fork("handleGeotiffIndex", [JSON.stringify(options)]);
+
+    child.on("exit", (code) => {
+        if(code != 0) {
+            //should write log of errors etc for children
+            errorExit(`Child process failed with non-zero exit code. See log for details. Exit code ${code}. Terminating program.`);
+        }
+    });
+
+    children.push(child);
+}
+
+options.apiSpawnAlloc = apiSpawnAllocLow;
+
+for(; i < apiProcLimitLow; i++) {
+    options.indexRange = ranges[i];
+    //pass options as stringified json object
+    let child = fork("handleGeotiffIndex", [JSON.stringify(options)]);
+
+    child.on("exit", (code) => {
+        if(code != 0) {
+            //should write log of errors etc for children
+            errorExit(`Child process failed with non-zero exit code. See log for details. Exit code ${code}. Terminating program.`);
+        }
+    });
+
+    children.push(child);
+}
+
+//sanity check
+if(i != procLimit) {
+    errorExit("Failed sanity check, api process allocations not chunked correctly.");
+}
+
+
+
+//---------------------end---------------------
+
+
+
+const index = require(options.indexFile);
 
 
 let geotiffMeta = index.index;
@@ -443,7 +540,11 @@ function exit(code = 0) {
 }
 
 function cleanup() {
-    pool.destroy();
+    if(children) {
+        for(let child of children) {
+            child.kill();
+        }
+    }
 }
 
 

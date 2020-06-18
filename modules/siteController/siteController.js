@@ -1,6 +1,5 @@
 const csv = require("csv-parser");
 const fs = require("fs");
-const {EventEmitter} = require("events");
 const schemaTrans = require("./schema_translation");
 const schema = require("./doc_schema");
 const ingestor = require("../../meta_ingestor");
@@ -506,7 +505,7 @@ function chunkedLoop(start, end, chunkSize, routine) {
     continueLoop = true;
     for(let i = 0; i < chunkSize && pos < end; i++, pos++) {
         continueLoop = routine(pos);
-        if(continueLoop) {
+        if(!continueLoop) {
             break;
         }
     }
