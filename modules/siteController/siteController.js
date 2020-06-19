@@ -4,6 +4,7 @@ const schemaTrans = require("./schema_translation");
 const schema = require("./doc_schema");
 const ingestor = require("../../meta_ingestor");
 const path = require("path");
+const os = require("os");
 
 //node siteController.js -f ./input/daily_rf_data_2019_11_27.csv -d test -v rainfall -u mm -o ../../output -l 1
 
@@ -30,6 +31,8 @@ let options = {
     valueLimit: -1,
     valueLimitI: -1,
     rowLimit: -1,
+    
+    maxSpawn: -1,
 
     notificationInterval: -1
 }
@@ -42,6 +45,7 @@ let helpString = "Available arguments:\n"
 + "-v, --valuetype: Required. Type of the values in this dataset (e.g. rainfall, average temperature).\n"
 + "-u, --units: Required. Units values are represented in.\n"
 + "-o, --output_directory: Required. Directory to write JSON documents and other output.\n"
++ "-s, --max-spawn: Optional. The maximum number of Agave request handler processes to spawn at once. Negative values indicate equal to the number of logical cores on the system minus one (main process). Default value -1.\n"
 + "-nc, --no_cleanup: Optional. Turns off document cleanup after ingestion. JSON output will not be deleted (deleted by default).\n"
 + "-l, --document_limit: Optional. Limit the number of metadata documents to be ingested. Negative value indicates no limit. Default value -1.\n"
 + "-r, --retry_limit: Optional. Limit the number of times to retry a document ingestion on failure before counting it as a fault. Negative value indicates no limit. Default value 3.\n"
@@ -71,6 +75,21 @@ let args = process.argv.slice(2);
 
 for(let i = 0; i < args.length; i++) {
     switch(args[i]) {
+        case "-s":
+        case "--max_spawn": {
+            if(++i >= args.length) {
+                invalidArgs();
+            }
+            value = args[i];
+            let valuei = parseInt(args[i]);
+            if(isNaN(valuei)) {
+                invalidArgs();
+            }
+            else {
+                options.maxSpawn = valuei;
+            }
+            break;
+        }
         case "-f":
         case "--datafile": {
             if(++i >= args.length) {
@@ -322,8 +341,12 @@ if(options.valueLimitI < 0) {
 if(options.rowLimit < 0) {
     options.rowLimit = Number.POSITIVE_INFINITY;
 }
+if(options.maxSpawn < 0) {
+    options.maxSpawn = os.cpus().length;
+}
 
 
+ingestor.setMaxSpawn(options.maxSpawn);
 
 
 //-------------main--------------------
@@ -555,6 +578,7 @@ function error(e) {
 
 function errorExit(e) {
     console.error(`Critical error in controller. The process will exit.\n${e.toString()}`);
+    console.trace();
     cleanup();
     exit(1);
 }
