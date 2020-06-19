@@ -28,7 +28,7 @@ function spawnReturned() {
 }
 
 function trySpawn() {
-    if(spawned < maxSpawn) {
+    if(spawned < maxSpawn && spawnQueue.length > 0) {
         spawnNext();
         trySpawn();
     }
@@ -53,21 +53,26 @@ function spawnNext() {
 
 function getSpawnFunct(metaFile, container) {
     return () => {
-        child = container == null ? spawn("bash", ["./bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["./bin/agave_containerized/add_meta.sh", container, metaFile]);
-        //could not spawn bash process
-        child.on("error", (e) => {
-            reject(e);
-        });
-        child.stderr.on('data', (e) => {
-            reject(e);
-        });
-        child.on('close', (code) => {
-            if(code == 0) {
-                resolve();
-            }
-            else {
-                reject(`Child process exited with code ${code}.`);
-            }
+        return new Promise((resolve, reject) =>{
+            child = container == null ? spawn("bash", ["../../bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["../../bin/agave_containerized/add_meta.sh", container, metaFile]);
+            //could not spawn bash process
+            child.on("error", (e) => {
+                reject(e);
+            });
+            // child.stdout.on("data", (m) => {
+            //     console.log(m.toString());
+            // });
+            child.stderr.on("data", (e) => {
+                reject(e);
+            });
+            child.on("close", (code) => {
+                if(code == 0) {
+                    resolve();
+                }
+                else {
+                    reject(`Child process exited with code ${code}.`);
+                }
+            });
         });
     }
 }
@@ -152,5 +157,9 @@ function dataHandler(fname, metadata, retryLimit, cleanup, container = null) {
     return dataHandlerRecursive(fname, metadata, retryLimit, cleanup, container);
 }
 
+function setMaxSpawn(max) {
+    maxSpawn = max;
+}
+
 module.exports.dataHandler = dataHandler;
-module.exports.maxSpawn = maxSpawn;
+module.exports.setMaxSpawn = setMaxSpawn;
