@@ -1,0 +1,1 @@
+metadata-list -l 0 -Q "{'name':'$1'}" | tee /dev/tty | wc -l
