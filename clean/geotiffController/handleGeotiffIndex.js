@@ -44,7 +44,7 @@ let done = false;
 let id = 0;
 
 
-createDoc = (meta, createHeader, createValue, headerID, valueID) => {
+let createDoc = (meta, createHeader, createValue, headerID, valueID) => {
     if(!createHeader && !createValue) {
         return null;
     }
@@ -114,12 +114,7 @@ createDoc = (meta, createHeader, createValue, headerID, valueID) => {
 chunkedLoop(options.indexRange[0], options.indexRange[1], chunkSize, (i) => {
     let meta = geotiffMeta[i];
 
-    //only handle statewide mappings, just continue if spatial extent is not statewide
-    if(meta.descriptor.spatialExtent != "St") {
-        return true;
-    }
-
-    let createHeader = i == 0 && options.createHeader && submittedDocs < docLimit;
+    let createHeader = i == 0 && options.createHeader;
     if(createHeader) {
         submittedDocs++;
     }

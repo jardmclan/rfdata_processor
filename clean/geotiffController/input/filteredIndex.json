@@ -1,0 +1,364 @@
+{
+    "index": [
+        {
+            "fpath": "/monthly/1920/02/St/mm/RA-Monthly_RF_st_1920_02_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-02-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/01/St/mm/RA-Monthly_RF_st_1920_01_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-01-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/04/St/mm/RA-Monthly_RF_st_1920_04_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-04-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/05/St/mm/RA-Monthly_RF_st_1920_05_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-05-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/06/St/mm/RA-Monthly_RF_st_1920_06_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-06-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/03/St/mm/RA-Monthly_RF_st_1920_03_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-03-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/08/St/mm/RA-Monthly_RF_st_1920_08_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-08-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/09/St/mm/RA-Monthly_RF_st_1920_09_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-09-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/10/St/mm/RA-Monthly_RF_st_1920_10_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-10-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/12/St/mm/RA-Monthly_RF_st_1920_12_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-12-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/11/St/mm/RA-Monthly_RF_st_1920_11_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-11-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/01/St/mm/RA-Monthly_RF_st_1921_01_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-01-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/02/St/mm/RA-Monthly_RF_st_1921_02_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-02-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/03/St/mm/RA-Monthly_RF_st_1921_03_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-03-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/04/St/mm/RA-Monthly_RF_st_1921_04_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-04-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/05/St/mm/RA-Monthly_RF_st_1921_05_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-05-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/06/St/mm/RA-Monthly_RF_st_1921_06_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-06-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/07/St/mm/RA-Monthly_RF_st_1921_07_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-07-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/08/St/mm/RA-Monthly_RF_st_1921_08_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-08-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/10/St/mm/RA-Monthly_RF_st_1921_10_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-10-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/09/St/mm/RA-Monthly_RF_st_1921_09_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-09-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/11/St/mm/RA-Monthly_RF_st_1921_11_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-11-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1921/12/St/mm/RA-Monthly_RF_st_1921_12_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1921-12-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/01/St/mm/RA-Monthly_RF_st_1922_01_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-01-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/04/St/mm/RA-Monthly_RF_st_1922_04_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-04-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/02/St/mm/RA-Monthly_RF_st_1922_02_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-02-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/05/St/mm/RA-Monthly_RF_st_1922_05_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-05-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1920/07/St/mm/RA-Monthly_RF_st_1920_07_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1920-07-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/07/St/mm/RA-Monthly_RF_st_1922_07_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-07-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/08/St/mm/RA-Monthly_RF_st_1922_08_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-08-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/06/St/mm/RA-Monthly_RF_st_1922_06_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-06-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/09/St/mm/RA-Monthly_RF_st_1922_09_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-09-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/10/St/mm/RA-Monthly_RF_st_1922_10_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-10-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/11/St/mm/RA-Monthly_RF_st_1922_11_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-11-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/12/St/mm/RA-Monthly_RF_st_1922_12_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-12-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        },
+        {
+            "fpath": "/monthly/1922/03/St/mm/RA-Monthly_RF_st_1922_03_mm_.tif",
+            "descriptor": {
+                "timeGranularity": "monthly",
+                "date": "1922-03-00T00:00:00Z",
+                "spatialExtent": "St",
+                "unit": "mm",
+                "dataset": "main"
+            }
+        }
+    ]
+}
