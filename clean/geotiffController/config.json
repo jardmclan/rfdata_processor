@@ -1,0 +1,21 @@
+{
+    "indexFile": undefined,
+    "dataRoot": undefined,
+    "dataset": undefined,
+    "outDir": undefined,
+
+    "maxSpawn": -1,
+    "apiSpawnLimit": -1,
+    "createHeader": true,
+    "valueName": "value_map",
+    "headerName": "raster_header",
+    "cleanup": true,
+    "docLimit": -1,
+    "retryLimit": 3,
+    "faultLimit": 0,
+    "containerLoc": null,
+    "notificationInterval": -1,
+
+    "loopResetInterval": 100,
+    "geotiffHandleChunk": 1
+}

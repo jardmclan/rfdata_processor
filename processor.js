@@ -268,158 +268,8 @@ function parseToBytes(size) {
 
 
 
-//just use sequential ids, also serves as a counter for the number of docs for exiting
-let docID = 0;
-let returned = 0;
-let allSent = false;
-
-//verify that document has required name and value fields
-function validateDocument(document) {
-    return document.name !== undefined && document.value !== undefined;
-}
-
-function sendData(metadata) {
-    if(!validateDocument(metadata)) {
-        console.error(`Error: Received invalid document from controller. Document must have name and value fields.`);
-        return;
-    }
-    let id = docID++;
-    let fname = path.join(outDir, `metadoc_${id}.json`);
-    let message = {
-        id: id,
-        data: JSON.stringify(metadata),
-        fname: fname,
-        cleanup: cleanup,
-        container: containerLoc
-    };
-    ingestionCoordinator.send(message, (e) => {
-        if(e) {
-            console.error(`Error: Failed to send message.\nID: ${message.id}\nReason: ${e.toString()}\n`);
-        }
-    });
-}
-
-function complete() {
-    //make sure this hasn't already been called
-    if(!allSent) {
-        //signal to coordinator that all documents have been sent
-        ingestionCoordinator.send(null);
-        //set flag to indicate complete
-        allSent = true;
-    }
-}
 
 
-let ingestorOptions = {
-    highWaterMark: highWaterMark,
-    maxSpawn: maxSpawn,
-    retry: retryLimit
-};
-
-ingestionCoordinator = fork("ingestion_coord.js", [JSON.stringify(ingestorOptions)], {stdio: "pipe"});
-
-function errorExit(e) {
-    console.error(`An error has occurred, the process will exit.\n${e.toString()}`);
-    cleanupFunct();
-    process.exit(1);
-}
-
-function cleanupFunct() {
-    //kill the coordinator process if process handle exists
-    if(ingestionCoordinator) {
-        ingestionCoordinator.kill("SIGKILL");
-    }
-    //destroy source
-    if(source) {
-        source.destroy();
-    }
-}
-
-//message should have a value type and value
-function processMessage(message) {
-    switch(message.type) {
-        //control messages, use to throttle input document stream
-        case "control": {
-            controlMessageHandler(message.value);
-            break;
-        }
-        //result messages
-        case "result": {
-            resultMessageHandler(message.value);
-            break;
-        }
-        //?
-        default: {
-            console.error("Unrecognized message type received from coordinator.");
-        }
-    }
-}
-
-let controlPause = false;
-
-function controlMessageHandler(message) {
-    switch(message) {
-        //message queue is at high water mark, please stop sending messages
-        case "pause": {
-            controlPause = true;
-            //pause document source
-            source.pause();
-            break;
-        }
-        //go ahead and send more
-        case "resume": {
-            controlPause = false;
-            //resume document source, don't worry about checking for data throttle, breaking that isn't too important
-            source.resume();
-            break;
-        }
-    }
-}
-
-function resultMessageHandler(message) {
-    if(!message.result.success) {
-        console.error(`Error: Metadata ingestion failed.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
-        if(++faults > faultLimit) {
-            errorExit(new Error("Fault limit reached. Too many metadata ingestor processes exited with an error."));
-        }
-    }
-    else if(message.result.pof != null) {
-        console.log(`Warning: An error occured after metadata insertion.\nID: ${message.id}\nPOF: ${message.result.pof}\nReason: ${message.result.error}\n`);
-    }
-
-    returned++;
-    if(returned % notificationInterval == 0) {
-        console.log(`Finished ${returned} documents.`);
-    }
-
-    if(returned >= docID && allSent) {
-        console.log("Complete!");
-        process.exit(0);
-    }
-}
-
-
-
-//push errors from coordination process to stderr
-ingestionCoordinator.stderr.on("data", (chunk) => {
-    console.error(`Error in coordinator process: ${chunk.toString()}`);
-});
-
-//if coordination process exits with an error code exit process imediately
-ingestionCoordinator.on("exit", (code) => {
-    if(code != 0) {
-        console.error(`Error: Coordinator process has exited with a non-zero exit code. Error code ${code}.`);
-        process.exit(1);
-    }
-});
-
-let faults = 0;
-ingestionCoordinator.on("message", (message) => {
-    processMessage(message);
-});
-
-
-let documentsReceived = 0;
 source = new Controller(options);
 
 
@@ -433,82 +283,12 @@ source = new Controller(options);
 
 
 
-//--------------------------------------------
 
 
-function cleanupFile(fname) {
-    return new Promise((resolve, reject) => {
-        fs.unlink(fname, (e) => {
-            if(e) {
-                reject(e)
-            }
-            else {
-                resolve();
-            }
-        });
-    });
-}
-
-function addMeta(metaFile, container) {
-    return new Promise((resolve, reject) => {
-        child = container == null ? spawn("bash", ["./bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["./bin/agave_containerized/add_meta.sh", container, metaFile]);
-        //could not spawn bash process
-        child.on("error", (e) => {
-            reject(e);
-        });
-        child.stderr.on('data', (e) => {
-            reject(e);
-        });
-        child.on('close', (code) => {
-            if(code == 0) {
-                resolve();
-            }
-            else {
-                reject(`Child process exited with code ${code}.`);
-            }
-        });
-    });
-    
-}
-
-
-function ingestData(fname) {
-    return new Promise((resolve, reject) => {
-        addMeta(fname, containerLoc).then(() => {
-            if(cleanup) {
-                cleanupFile(fname).then(() => {
-                    resolve(null)
-                }, (e) => {
-                    resolve(e)
-                })
-            }
-        }, (e) => {
-            reject(e)
-            //still try to cleanup, but ignore output
-            cleanupFile(fname)
-        })
-    });
-    
-}
-
-
-function dataHandler(fname, attempt = 0) {
-
-    return ingestData(fname).then((error) => {
-        return error;
-    }, (error) => {
-        if(attempt++ >= retryLimit) {
-            return Promise.reject(error);
-        }
-        else {
-            return ingestData(fname, attempt++);
-        }
-    });
-
-    
-}
-
-source.on("data", (fname) => {
+source.on("processed", (success) => {
+    if(documentsReceived >= documentLimit) {
+        return;
+    }
 
     dataHandler(fname).then((error) => {
         console.log(`Warning: Failed to cleanup file ${fname}\n${error}`);
@@ -518,16 +298,10 @@ source.on("data", (fname) => {
             errorExit(new Error("Fault limit reached. Too many metadata ingestor processes exited with an error."));
         }
     })
-    
 
-    tries = 0;
-
-    documentsReceived
     if(++documentsReceived >= documentLimit) {
-
+        source.destroy(cleanup);
     }
-    
-    dataHandler(fname);
 });
 
 source.on("end", () => {

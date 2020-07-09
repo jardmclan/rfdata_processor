@@ -51,7 +51,7 @@ class Source:
             fields = reader.next()
 
             metadata_fields = []
-            date_fields = []
+            value_fields = []
 
             #need to make sure at least has skn field
             got_skn = False
@@ -62,7 +62,7 @@ class Source:
                 if translation is None:
                     if date_regex.match(field) is not None:
                         translation = __date_header_to_iso(field)
-                        date_fields.append((index, translation))
+                        value_fields.append((index, translation))
                     else:
                         eprint("No schema translation for csv header %s" % field)
                 else:
@@ -78,14 +78,16 @@ class Source:
             doc_id = 0
             for row in reader:
                 metadata_doc = {}
+                #should any of these be converted to numbers?
                 for field in metadata_fields:
                     index = field[0]
                     value = row[index]
                     translation = field[1]
                     metadata_doc[translation] = value
+                metadata_doc["dataset"] = self.option.dataset
 
                 wrapped_metadata_doc = {
-                    "name": "test",
+                    "name": self.options,
                     "value": metadata_doc
                 }
                 #lets get this working then move to the value docs
@@ -93,6 +95,22 @@ class Source:
                 future = self.t_exec.submit(self.__write_doc, file, metadata_doc, self.options.retry)
                 cb = self.__get_write_doc_cb(file)
                 future.add_done_callback(cb)
+
+                for field in value_fields:
+                    index = field[0]
+                    value = row[index]
+                    #skip columns with no value
+                    if value != self.options.novalue:
+                        value_doc = {
+                            "skn": metadata_doc["skn"],
+                            "date": {
+                                    "$date": date
+                                },
+                            "value": valuef,
+                            "type": self.options.valueType,
+                            "units": self.options.units,
+                            "dataset": self.options.dataset
+                        }
 
 
 

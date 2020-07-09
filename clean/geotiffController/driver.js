@@ -2,22 +2,18 @@
 
 
 const {join} = require("path");
-
 const {fork} = require("child_process");
-
-
-const processor = join("geotiffProcessor.js");
-
-
+const processor = require("geotiffProcessor");
 const os = require("os");
-const ingestor = require("../../meta_ingestor");
+const resourceSync = require("./resourceSync.js");
 
-console.log(ProcessPool.Pool);
+
 //node geotiffcontroller.js -f ./input/index.json -r ./input/RF_Monthly_3_Yr_Sample -d test -o ../../output -l 1 -i 1
 
 
 //-------------parse args--------------------
 
+//default options
 let options = {
     indexFile: undefined,
     dataRoot: undefined,
@@ -25,6 +21,7 @@ let options = {
     outDir: undefined,
 
     maxSpawn: -1,
+    apiSpawnLimit: -1,
     createHeader: true,
     valueName: "value_map",
     headerName: "raster_header",
@@ -33,12 +30,39 @@ let options = {
     retryLimit: 3,
     faultLimit: 0,
     containerLoc: null,
-    notificationInterval: -1
+    notificationInterval: -1,
+    loopResetInterval: 100,
+    geotiffHandleChunk: 1
+};
+
+
+let optionsFile = "./config.json";
+
+if(process.argv.length > 2) {
+    switch(process.argv[2]) {
+        case "-h":
+        case "--help": {
+            help();
+            break;
+        }
+        default: {
+            optionsFile = process.argv[2];
+        }
+    }
+    optionsFile = process.argv[2];
 }
 
+let userOptions = require(optionsFile);
+for(let option in userOptions) {
+    options[option] = userOptions[option];
+}
 
+if(options.indexFile === undefined || options.dataRoot === undefined || options.dataset === undefined || options.outDir === undefined) {
+    invalidOpts();
+}
 
-let helpString = "Available arguments:\n"
+//need to change this
+let helpString = "Available options:\n"
 + "-f, --index_file: Required. An index file containing the paths to the geotiff files and their respective metadata.\n"
 + "-r, --data_root: Required. The root folder for the geotiff files. Index file paths should be relative to this folder.\n"
 + "-d, --dataset: Required. Identifier for dataset being ingested.\n"
@@ -53,187 +77,20 @@ let helpString = "Available arguments:\n"
 + "-fl, --fault_limit: Optional. Limit the allowable number of metadata ingestion faults (per process) before failing. Note that single process failure will result in program termination. Negative value indicates no limit. Default value 0.\n"
 + "-c, --containerized: Optional. Indicates that the agave instance to be used is containerized and commands will be run using exec with the specified singularity image. Note that faults may not be properly detected when using agave containerization.\n"
 + "-i, --notification_interval: Optional. Print a notification to stdout after this many documents. Negative value indicates never print notification. Default value -1\n"
-+ "-h, --help: Show this message.\n"
++ "-h, --help: Show this message.\n";
 
-function invalidArgs() {
+function invalidOpts() {
+    console.error("Invalid config file provided.\n");
     console.error(helpString);
-    process.exit(2);
+    process.exit(1);
 }
 
-function helpAndTerminate() {
+function help() {
     console.log(helpString);
-    process.exit(0);
-}
-
-let args = process.argv.slice(2);
-
-for(let i = 0; i < args.length; i++) {
-    switch(args[i]) {
-        case "-s":
-        case "--max_spawn": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            let valuei = parseInt(args[i]);
-            if(isNaN(valuei)) {
-                invalidArgs();
-            }
-            else {
-                options.maxSpawn = valuei;
-            }
-            break;
-        }
-
-        case "-nh":
-        case "--no_header": {
-            options.createHeader = false;
-            break;
-        }
-        case "-vn":
-        case "--value_name": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            options.valueName = args[i];
-            break;
-        }
-        case "-hn":
-        case "--header_name": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            options.headerName = args[i];
-            break;
-        }
-        case "-r":
-        case "--data_root": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            options.dataRoot = args[i];
-            break;
-        }
-        case "-f":
-        case "--index_file": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            options.indexFile = args[i];
-            break;
-        }
-
-
-        case "-d":
-        case "--dataset": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            options.dataset = value;
-            break;
-        }
-        
-        case "-o":
-        case "-output_directory": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            options.outDir = value;
-            break;
-        }
-        case "-nc":
-        case "--no_cleanup": {
-            options.cleanup = false;
-            break;
-        }
-        case "-l":
-        case "--document_limit": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            valuei = parseInt(value);
-            if(isNaN(valuei)) {
-                invalidArgs();
-            }
-            else {
-                options.docLimit = valuei;
-            }
-            break;
-        }
-        case "-fl":
-        case "--fault_limit": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            valuei = parseInt(value);
-            if(isNaN(valuei)) {
-                invalidArgs();
-            }
-            else {
-                options.faultLimit = valuei;
-            }
-            break;
-        }
-        case "-r":
-        case "--retry_limit": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            valuei = parseInt(value);
-            if(isNaN(valuei)) {
-                invalidArgs();
-            }
-            else {
-                options.retryLimit = valuei;
-            }
-            break;
-        }
-        case "-c":
-        case "--containerized": {
-            //get next arg, ensure not out of range
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            options.containerLoc = value;
-            break;
-        }
-        case "-i":
-        case "--notification_interval": {
-            if(++i >= args.length) {
-                invalidArgs();
-            }
-            value = args[i];
-            valuei = parseInt(value);
-            if(isNaN(valuei)) {
-                invalidArgs();
-            }
-            else {
-                options.notificationInterval = valuei;
-            }
-            break;
-        }
-        case "-h":
-        case "--help": {
-            helpAndTerminate();
-            break;
-        }
-        default: {
-            invalidArgs();
-        }
-    }
+    process.exit();
 }
 
 
-
-if(options.indexFile === undefined || options.dataRoot === undefined || options.dataset === undefined || options.outDir === undefined) {
-    invalidArgs()
-}
 
 
 //convert negative limits to infinity for easier comparisons
@@ -299,26 +156,13 @@ if(s != metaLen || ranges.length != procLimit) {
 }
 
 
-//should have api process limit too, should be >= the processLimit (each process needs its own spawn allocation so no need to have interprocess coordination), print warning otherwise and change to match in arg manager
-//failure limit should be per process, change doc to reflect this, but should abort all processes on single failure
-
-//repeat chunking process for api spawn allocations
-let apiSpawnAllocLow = Math.floor(options.apiSpawnLimit / procLimit);
-let apiSpawnAllocHigh = apiSpawnAllocLow + 1;
-
-let leftover = options.apiSpawnLimit % procLimit;
-
-let apiProcLimitHigh = leftover;
-let apiProcLimitLow = procLimit - apiProcLimitHigh;
+resourceSync.setSpawnLevel(option);
 
 
-let children = [];
 
-options.apiSpawnAlloc = apiSpawnAllocHigh;
 
-let i = 0;
-for(; i < apiProcLimitHigh; i++) {
-    options.indexRange = ranges[i];
+for(let range of ranges) {
+    options.indexRange = range;
     //pass options as stringified json object
     let child = fork("handleGeotiffIndex", [JSON.stringify(options)]);
 
@@ -332,27 +176,7 @@ for(; i < apiProcLimitHigh; i++) {
     children.push(child);
 }
 
-options.apiSpawnAlloc = apiSpawnAllocLow;
 
-for(; i < apiProcLimitLow; i++) {
-    options.indexRange = ranges[i];
-    //pass options as stringified json object
-    let child = fork("handleGeotiffIndex", [JSON.stringify(options)]);
-
-    child.on("exit", (code) => {
-        if(code != 0) {
-            //should write log of errors etc for children
-            errorExit(`Child process failed with non-zero exit code. See log for details. Exit code ${code}. Terminating program.`);
-        }
-    });
-
-    children.push(child);
-}
-
-//sanity check
-if(i != procLimit) {
-    errorExit("Failed sanity check, api process allocations not chunked correctly.");
-}
 
 
 

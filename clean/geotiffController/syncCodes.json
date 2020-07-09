@@ -1,0 +1,10 @@
+{
+    "request": {
+        "request": 0,
+        "release": 1
+    },
+    "response": {
+        "accept": 0,
+        "reject": 1
+    }
+}

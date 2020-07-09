@@ -2,18 +2,13 @@
 
 
 const {join} = require("path");
-
-
-
-
 const processor = join("geotiffProcessor.js");
-
-
 const os = require("os");
-const ingestor = require("../../meta_ingestor");
-const ProcessPool = require("process-pool").default;
+const ingestor = require("../meta_ingestor");
+const syncCodes = require("syncCodes.json");
+const Semaphore = require("../Semaphore");
 
-console.log(ProcessPool.Pool);
+
 //node geotiffcontroller.js -f ./input/index.json -r ./input/RF_Monthly_3_Yr_Sample -d test -o ../../output -l 1 -i 1
 
 if(process.argv.length < 2) {
@@ -44,9 +39,42 @@ let done = false;
 let id = 0;
 
 
-let createDoc = (meta, createHeader, createValue, headerID, valueID) => {
+
+let geotiffChunk = 3;
+let geotiffHandleSemaphore = new Semaphore(geotiffChunk);
+
+
+
+
+function createDoc(meta, createHeader, createValue, headerID, valueID) {
     if(!createHeader && !createValue) {
-        return null;
+        return Promise.resolve([]);
+    }
+
+    let submitToAPI = (outFile, metadata, id) => {
+        //send request for resources to coordinator
+        process.send({
+            id: id,
+            code: syncCodes.request.request
+        });
+
+        return new Promise((resolve, reject) => {
+            process.on("message", (data) => {
+                //if does not equal id this is fullfilling another request
+                if(data.id == id) {
+                    switch(data.code) {
+                        //good to go
+                        case syncCodes.response.accept: {
+                            dataHandlerPromise = ingestor.dataHandler(outFile, metadata, options.retryLimit, options.cleanup, options.containerLoc);
+                            resolve(dataHandlerPromise);
+                        }
+                        case syncCodes.response.reject: {
+                            reject("Request for API access rejected by coordinator.");
+                        }
+                    }
+                }
+            });
+        });
     }
 
     let submitHeader = (header, id) => {
@@ -65,7 +93,7 @@ let createDoc = (meta, createHeader, createValue, headerID, valueID) => {
         let fname = `meta_${id}.json`;
         let outFile = join(options.outDir, fname);
 
-        return ingestor.dataHandler(outFile, wrapped, options.retryLimit, options.cleanup, options.containerLoc);
+        return submitToAPI(outFile, wrapped, id);
     }
 
     let submitValues = (values, id) => {
@@ -86,8 +114,9 @@ let createDoc = (meta, createHeader, createValue, headerID, valueID) => {
 
         let fname = `meta_${id}.json`;
         let outFile = join(options.outDir, fname);
-
-        return ingestor.dataHandler(outFile, wrapped, options.retryLimit, options.cleanup, options.containerLoc);
+        
+        return submitToAPI(outFile, wrapped, id);
+        
     }
 
 
@@ -101,13 +130,17 @@ let createDoc = (meta, createHeader, createValue, headerID, valueID) => {
             promises.push(submitValues(data.values, valueID));
         }
 
+
         return Promise.all(promises);
 
     }, (e) => {
         return Promise.reject(e);
     });
     
-};
+}
+
+
+
 
 
 // options.indexRange holds range handled by this process
@@ -123,22 +156,26 @@ chunkedLoop(options.indexRange[0], options.indexRange[1], chunkSize, (i) => {
         createValue = false;
     }
     
-
-    createDoc(meta, createHeader, createValue, id++, id++).then((results) => {
-        for(let e of results) {
-            if(e) {
-                warning(`Failed to cleanup file ${docName}\n${e.toString()}`);
+    geotiffHandleSemaphore.acquire().then(() => {
+        createDoc(meta, createHeader, createValue, id++, id++).then((results) => {
+            for(let e of results) {
+                if(e) {
+                    warning(`Failed to cleanup file ${docName}\n${e.toString()}`);
+                }
+                geotiffHandleSemaphore.release();
+                docIngested();
             }
-            docIngested();
-        }
-    }, (e) => {
-        error(e);
-        if(failedDocs++ >= options.faultLimit) {
-            errorExit(`Fault limit reached.`);
-        }
-
-        
+        }, (e) => {
+            error(e);
+            if(failedDocs++ >= options.faultLimit) {
+                errorExit(`Fault limit reached.`);
+            }
+    
+            
+        });
     });
+
+    
 
     return submittedDocs < options.docLimit;
 }).then(() => {

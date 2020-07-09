@@ -270,10 +270,10 @@ let metaLen = geotiffMeta.length;
 //make sure not spawning more processes than there are values
 let procLimit = Math.min(metaLen, options.processLimit);
 
-let chunkSizeLow = Math.floor(metaLen / processLimit);
+let chunkSizeLow = Math.floor(metaLen / procLimit);
 let chunkSizeHigh = chunkSizeLow + 1;
 
-let leftover = metaLen % processLimit;
+let leftover = metaLen % procLimit;
 
 let procLimitHigh = leftover;
 let procLimitLow = procLimit - procLimitHigh;

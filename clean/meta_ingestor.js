@@ -1,10 +1,5 @@
-
 const {spawn} = require("child_process");
 const fs = require("fs");
-
-let spawned = 0;
-let spawnQueue = [];
-let maxSpawn = 1;
 
 function cleanupFile(fname) {
     return new Promise((resolve, reject) => {
@@ -19,80 +14,24 @@ function cleanupFile(fname) {
     });
 }
 
-function spawnReturned() {
-    if(--spawned < 0) {
-        throw new Error("Spawn state error. Spawn count underflow.");
-    }
-
-    trySpawn();
-}
-
-function trySpawn() {
-    if(spawned < maxSpawn && spawnQueue.length > 0) {
-        spawnNext();
-        trySpawn();
-    }
-}
-
-function spawnNext() {
-    spawned++;
-    let next = spawnQueue.shift();
-    next.spawn().then(() => {
-        next.cb();
-    }, (e) => {
-        next.cb(e);
-    })
-    .catch((e) => {
-        next.cb(e);
-    })
-    .finally(() => {
-        spawnReturned();
-    });
-}
-
-
-function getSpawnFunct(metaFile, container) {
-    return () => {
-        return new Promise((resolve, reject) =>{
-            child = container == null ? spawn("bash", ["../../bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["../../bin/agave_containerized/add_meta.sh", container, metaFile]);
-            //could not spawn bash process
-            child.on("error", (e) => {
-                reject(e);
-            });
-            // child.stdout.on("data", (m) => {
-            //     console.log(m.toString());
-            // });
-            child.stderr.on("data", (e) => {
-                reject(e);
-            });
-            child.on("close", (code) => {
-                if(code == 0) {
-                    resolve();
-                }
-                else {
-                    reject(`Child process exited with code ${code}.`);
-                }
-            });
-        });
-    }
-}
-
-
 function addMeta(metaFile, container) {
     return new Promise((resolve, reject) => {
-        spawnData = {
-            spawn: getSpawnFunct(metaFile, container),
-            cb: (e = null) => {
-                if(e) {
-                    reject(e);
-                }
-                else {
-                    resolve();
-                }
+        child = container == null ? spawn("bash", ["./bin/agave_local/add_meta.sh", metaFile]) : spawn("bash", ["./bin/agave_containerized/add_meta.sh", container, metaFile]);
+        //could not spawn bash process
+        child.on("error", (e) => {
+            reject(e);
+        });
+        child.stderr.on('data', (e) => {
+            reject(e);
+        });
+        child.on('close', (code) => {
+            if(code == 0) {
+                resolve();
             }
-        }
-        spawnQueue.push(spawnData);
-        trySpawn();
+            else {
+                reject(`Child process exited with code ${code}.`);
+            }
+        });
     });
     
 }
@@ -148,6 +87,7 @@ function dataHandlerRecursive(fname, metadata, retryLimit, cleanup, container, a
             return Promise.reject(error);
         }
         else {
+            console.log(attempt, retryLimit);
             return dataHandlerRecursive(fname, metadata, retryLimit, cleanup, container, attempt + 1);
         }
     });
@@ -157,9 +97,4 @@ function dataHandler(fname, metadata, retryLimit, cleanup, container = null) {
     return dataHandlerRecursive(fname, metadata, retryLimit, cleanup, container);
 }
 
-function setMaxSpawn(max) {
-    maxSpawn = max;
-}
-
 module.exports.dataHandler = dataHandler;
-module.exports.setMaxSpawn = setMaxSpawn;
